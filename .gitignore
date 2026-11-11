@@ -133,3 +133,27 @@ AGENTS.md
 .blocksds
 packaging/dreamcast/disc/*
 CLAUDE.md
+
+# --- Jedi Knight remaster project (personal) ---
+# Game data and anything extracted from it is copyrighted. Never commit.
+/gamedata/
+/hd/
+*.mat
+*.MAT
+*.3do
+*.3DO
+*.key
+*.KEY
+*.wav
+*.WAV
+*.ogg
+*.smk
+*.SMK
+*.san
+*.SAN
+*.cnd
+*.CND
+*.jkl
+*.JKL
+/build_darwin64.log
+/logs/

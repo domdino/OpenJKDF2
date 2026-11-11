@@ -11,6 +11,7 @@
 #include "World/jkPlayer.h"
 #include "Engine/rdCamera.h" // Added (remaster): per-pixel lighting
 #include "Primitives/rdMatrix.h"
+#include "Engine/sithGlowLights.h" // Added (remaster): glow-light highlights
 #include "General/stdBitmap.h"
 #include "stdPlatform.h"
 
@@ -121,6 +122,7 @@ GLint attribute_coord3d, attribute_v_color, attribute_v_light, attribute_v_uv, a
 GLint attribute_v_invz = -1;
 static GLint uniform_ppl = -1, uniform_pplNumLights = -1, uniform_pplLightPos = -1, uniform_pplLightCol = -1;
 static GLint uniform_pplAtten = -1, uniform_pplProj = -1, uniform_pplScreen = -1, uniform_pplSpecular = -1, uniform_pplWetness = -1;
+static GLint uniform_pplNumGlow = -1, uniform_pplGlowPos = -1, uniform_pplGlowCol = -1;
 GLint uniform_mvp, uniform_tex, uniform_texEmiss, uniform_displacement_map, uniform_tex_mode, uniform_blend_mode, uniform_worldPalette, uniform_worldPaletteLights;
 GLint uniform_tint, uniform_filter, uniform_fade, uniform_add, uniform_emissiveFactor, uniform_albedoFactor;
 GLint uniform_light_mult, uniform_displacement_factor, uniform_iResolution;
@@ -551,6 +553,9 @@ int init_resources()
     uniform_pplScreen = std3D_tryFindUniform(programDefault, "u_pplScreen");
     uniform_pplSpecular = std3D_tryFindUniform(programDefault, "u_pplSpecular");
     uniform_pplWetness = std3D_tryFindUniform(programDefault, "u_pplWetness");
+    uniform_pplNumGlow = std3D_tryFindUniform(programDefault, "u_pplNumGlow");
+    uniform_pplGlowPos = std3D_tryFindUniform(programDefault, "u_pplGlowPos");
+    uniform_pplGlowCol = std3D_tryFindUniform(programDefault, "u_pplGlowCol");
     uniform_mvp = std3D_tryFindUniform(programDefault, "mvp");
     uniform_tex = std3D_tryFindUniform(programDefault, "tex");
     uniform_texEmiss = std3D_tryFindUniform(programDefault, "texEmiss");
@@ -2982,6 +2987,20 @@ void std3D_DrawRenderList()
             glUniform4f(uniform_pplScreen, internalWidth, internalHeight, width, height);
             glUniform1f(uniform_pplSpecular, jkPlayer_specular);
             glUniform1f(uniform_pplWetness, jkPlayer_wetness);
+
+            // Glow lights: gathered once per frame (nearest in visible sectors), reused by
+            // every world draw in that frame.
+            static int lastGlowFrame = -1, numGlow = 0;
+            static float aGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], aGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
+            if (lastGlowFrame != std3D_frameCount) {
+                lastGlowFrame = std3D_frameCount;
+                numGlow = jkPlayer_bGlowLights ? sithGlowLights_Gather(rdCamera_g_pCurCamera, aGlowPos, aGlowCol, SITHGLOWLIGHTS_MAX_GATHER) : 0;
+            }
+            glUniform1i(uniform_pplNumGlow, numGlow);
+            if (numGlow) {
+                glUniform4fv(uniform_pplGlowPos, numGlow, aGlowPos);
+                glUniform4fv(uniform_pplGlowCol, numGlow, aGlowCol);
+            }
         }
     }
 

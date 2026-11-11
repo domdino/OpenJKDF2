@@ -167,3 +167,25 @@ Done, off by default (`r_perPixelLighting 1` in the in-game console to try it; b
 - Light colour is white for JK1. MotS coloured lights plug into the colour uniform later.
 - Needs a play session from Dom (blaster fights, sabers, explosions) before it's switched on by default.
 - Phase 2 (highlights from skylights and glowing surfaces) is what makes the static scene look wet. Today's highlights only come from dynamic lights.
+
+## 2026-11-11 - Capture views moved to later levels
+
+Dom asked for screenshots from later in the game. Standard set from now on (`scripts/capture_set.sh NAME [settings]`, silent, one contact sheet per run), each at level start:
+- 12escape: dark hangar, shuttle, glowing red floor strips and white wall strips
+- 17asarris: outdoors under a stormy sky
+- 20aboc: Boc with his saber lit (a live dynamic light). Boc still moves between runs (his cog drives him even with AI frozen), so this one isn't pixel-identical.
+
+Dom also supplied AI reimaginings of these exact views (plus 07yun, 10cargo, 14tower). Common to all of them: wet, reflective floors that mirror light strips, sky and objects; coloured light from sources (Boc's saber throws a pink pool); haze; moonlit sky light.
+
+## 2026-11-11 - Stage 2: glow lights (phase 2), experimental, off by default
+
+`src/Engine/sithGlowLights.c`: at level load, finds glowing level surfaces (texels that stay bright at the darkest light level of the world's light table; the dark end is detected from the data: level 0 in JK1) and places one light per glowing surface, coloured by those texels. Each frame the nearest 24 in visible sectors go to the shader as highlight-mostly lights. `r_glowLights` (needs `r_perPixelLighting`). `OPENJKDF2_GLOW_DEBUG=1` prints what's gathered.
+- 12escape: 26 glowing palette colours, 319 glow lights from 4335 surfaces.
+- First pass did nothing visible (0.4% change): strength was tied to how much of the texture glows, so thin strips on big floor textures clamped to the minimum, and lights sat flush on their own surface so the floor around a strip got no light. Fixed by fixed strength (0.5 to 1.0) and a 0.12 offset off the surface.
+- Second pass: visible, but as soft pinkish blobs on the walls next to the light strips (docs/screenshots/stage2-glowlights-hangar-test.png). Doesn't read as wet, and still no glints on the floor.
+- Conclusion: the wet look in every goal image is reflections, not point-light highlights. Floors mirror the strips, the shuttle and the sky. The technique for that is screen-space reflections. Glow lights stay in the engine, off by default; their positions are still useful as sources for haze and light shafts.
+
+**Next candidates**
+- Screen-space reflections on glossy surfaces (the wet floors). The shader already rebuilds camera-space position and normal per pixel, so these can go into the existing G-buffer targets for a post pass.
+- Coloured light for sabers (and other coloured dynamic lights): currently white.
+- Haze and light shafts (phase 3).

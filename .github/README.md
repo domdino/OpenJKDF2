@@ -25,7 +25,7 @@ That breaks down into concrete engine work:
 | The look needs | How | Status |
 |---|---|---|
 | Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | Done (playtesting) |
-| Glints from skylights and glowing grates | Highlights from emissive and sky surfaces | Planned |
+| Wet floors reflecting light strips, sky and objects | Screen-space reflections | Next |
 | Haze and light shafts | Depth-based haze, screen-space light shafts | Planned |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
@@ -53,7 +53,9 @@ That breaks down into concrete engine work:
 - [x] Measure the cost of bloom, SSAO and SSAA (130+ fps with everything on)
 - [x] Art direction chosen
 - [x] Per-pixel lighting with wet highlights for dynamic lights ([plan](../docs/stage2-lighting-plan.md)), being playtested
-- [ ] Highlights from glowing surfaces (skylights, grates)
+- [x] Highlights from glowing surfaces: built, but reads as blobs rather than wet; off by default
+- [ ] Screen-space reflections for wet, reflective floors
+- [ ] Coloured light from sabers
 - [ ] Haze and light shafts
 
 ## Latest

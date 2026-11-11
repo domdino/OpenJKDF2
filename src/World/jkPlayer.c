@@ -69,6 +69,7 @@ flex_t jkPlayer_gradeExposure = 1.0;                        // Added (remaster)
 int jkPlayer_bPerPixelLighting = 0;                         // Added (remaster)
 flex_t jkPlayer_specular = 1.0;                             // Added (remaster)
 flex_t jkPlayer_wetness = 0.6;                              // Added (remaster)
+int jkPlayer_bGlowLights = 0;                               // Added (remaster): experimental, off by default
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -206,6 +207,9 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterBool("r_perPixelLighting",         0,                          &jkPlayer_bPerPixelLighting,        CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_specular",                 1.0,                        &jkPlayer_specular,                 CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_wetness",                  0.6,                        &jkPlayer_wetness,                  CVARFLAG_LOCAL);
+    // Highlights from glowing level surfaces (light panels, strips, lamps). Needs r_perPixelLighting.
+    // Experimental: reads as soft blobs rather than wet reflections, so off by default.
+    sithCvar_RegisterBool("r_glowLights",               0,                          &jkPlayer_bGlowLights,              CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -263,6 +267,7 @@ void jkPlayer_ResetVars()
     jkPlayer_bPerPixelLighting = 0; // Added (remaster)
     jkPlayer_specular = 1.0;
     jkPlayer_wetness = 0.6;
+    jkPlayer_bGlowLights = 0;
     jkPlayer_gamma = 1.0;
     jkPlayer_bEnableJkgm = 1;
     jkPlayer_bEnableTexturePrecache = 1;
@@ -617,6 +622,7 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveBool(ext_fpath, "perpixellighting", jkPlayer_bPerPixelLighting); // Added (remaster)
         stdJSON_SaveFloat(ext_fpath, "specular", jkPlayer_specular);
         stdJSON_SaveFloat(ext_fpath, "wetness", jkPlayer_wetness);
+        stdJSON_SaveBool(ext_fpath, "glowlights", jkPlayer_bGlowLights);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -830,6 +836,7 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_bPerPixelLighting = stdJSON_GetBool(ext_fpath, "perpixellighting", jkPlayer_bPerPixelLighting); // Added (remaster)
         jkPlayer_specular = stdJSON_GetFloat(ext_fpath, "specular", jkPlayer_specular);
         jkPlayer_wetness = stdJSON_GetFloat(ext_fpath, "wetness", jkPlayer_wetness);
+        jkPlayer_bGlowLights = stdJSON_GetBool(ext_fpath, "glowlights", jkPlayer_bGlowLights);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

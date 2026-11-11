@@ -87,6 +87,9 @@ uniform vec4 u_pplProj;                 // half screen width, half screen height
 uniform vec4 u_pplScreen;               // canvas width, canvas height, framebuffer width, height
 uniform float u_pplSpecular;            // overall highlight strength
 uniform float u_pplWetness;             // 0 = matte, 1 = soaked
+uniform int u_pplNumGlow;               // glow lights: static lights at glowing surfaces
+uniform vec4 u_pplGlowPos[24];          // camera space xyz, w = radius
+uniform vec4 u_pplGlowCol[24];          // rgb colour, w = intensity
 
 // Rebuild the camera-space position from screen position and depth, inverting the
 // engine's projection: x = halfW + X*f/Y, y = halfH - Z*f/Y.
@@ -127,6 +130,27 @@ void ppl_compute(vec3 P, vec3 N, out vec3 diff, out vec3 spec)
             vec3 H = normalize(L + V);
             spec += u_pplLightCol[i].rgb * att * pow(max(dot(N, H), 0.0), shininess) * specScale;
         }
+    }
+
+    // Glow lights. Their glow is already in the baked light, so they add mostly
+    // highlights (the wet look) and only a touch of extra light. Smooth falloff to zero
+    // at the radius, since they're broad, soft sources.
+    for (int i = 0; i < u_pplNumGlow; i++)
+    {
+        vec3 Lv = u_pplGlowPos[i].xyz - P;
+        float d = length(Lv);
+        float r = u_pplGlowPos[i].w;
+        if (d >= r) continue;
+        float f = 1.0 - d / r;
+        float att = u_pplGlowCol[i].w * f * f;
+        vec3 L = Lv / max(d, 1e-5);
+        float ndl = dot(N, L);
+        if (ndl <= 0.0) continue;
+        diff += u_pplGlowCol[i].rgb * att * ndl * 0.15;
+        vec3 H = normalize(L + V);
+        // Slightly broader and stronger highlight than point lights: these are bright
+        // surfaces, not points, and they're what makes a static scene read as wet.
+        spec += u_pplGlowCol[i].rgb * att * pow(max(dot(N, H), 0.0), shininess * 0.5) * specScale * 2.0;
     }
 }
 

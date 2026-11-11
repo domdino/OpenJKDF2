@@ -9,6 +9,8 @@
 #include "Engine/rdColormap.h"
 #include "Main/jkGame.h"
 #include "World/jkPlayer.h"
+#include "Engine/rdCamera.h" // Added (remaster): per-pixel lighting
+#include "Primitives/rdMatrix.h"
 #include "General/stdBitmap.h"
 #include "stdPlatform.h"
 
@@ -113,6 +115,12 @@ static int std3D_activeFb = 1;
 int init_once = 0;
 GLuint programDefault, programMenu;
 GLint attribute_coord3d, attribute_v_color, attribute_v_light, attribute_v_uv, attribute_v_norm;
+// Added (remaster): per-pixel lighting. v_invz carries 1/(32*view depth) from the render cache
+// (D3DVERTEX.nx), which the shader uses to rebuild each pixel's camera-space position.
+#define STD3D_PPL_MAX_LIGHTS (32)
+GLint attribute_v_invz = -1;
+static GLint uniform_ppl = -1, uniform_pplNumLights = -1, uniform_pplLightPos = -1, uniform_pplLightCol = -1;
+static GLint uniform_pplAtten = -1, uniform_pplProj = -1, uniform_pplScreen = -1, uniform_pplSpecular = -1, uniform_pplWetness = -1;
 GLint uniform_mvp, uniform_tex, uniform_texEmiss, uniform_displacement_map, uniform_tex_mode, uniform_blend_mode, uniform_worldPalette, uniform_worldPaletteLights;
 GLint uniform_tint, uniform_filter, uniform_fade, uniform_add, uniform_emissiveFactor, uniform_albedoFactor;
 GLint uniform_light_mult, uniform_displacement_factor, uniform_iResolution;
@@ -532,6 +540,17 @@ int init_resources()
     attribute_v_color = std3D_tryFindAttribute(programDefault, "v_color");
     attribute_v_light = std3D_tryFindAttribute(programDefault, "v_light");
     attribute_v_uv = std3D_tryFindAttribute(programDefault, "v_uv");
+    // Added (remaster): per-pixel lighting
+    attribute_v_invz = std3D_tryFindAttribute(programDefault, "v_invz");
+    uniform_ppl = std3D_tryFindUniform(programDefault, "u_ppl");
+    uniform_pplNumLights = std3D_tryFindUniform(programDefault, "u_pplNumLights");
+    uniform_pplLightPos = std3D_tryFindUniform(programDefault, "u_pplLightPos");
+    uniform_pplLightCol = std3D_tryFindUniform(programDefault, "u_pplLightCol");
+    uniform_pplAtten = std3D_tryFindUniform(programDefault, "u_pplAtten");
+    uniform_pplProj = std3D_tryFindUniform(programDefault, "u_pplProj");
+    uniform_pplScreen = std3D_tryFindUniform(programDefault, "u_pplScreen");
+    uniform_pplSpecular = std3D_tryFindUniform(programDefault, "u_pplSpecular");
+    uniform_pplWetness = std3D_tryFindUniform(programDefault, "u_pplWetness");
     uniform_mvp = std3D_tryFindUniform(programDefault, "mvp");
     uniform_tex = std3D_tryFindUniform(programDefault, "tex");
     uniform_texEmiss = std3D_tryFindUniform(programDefault, "texEmiss");
@@ -970,6 +989,12 @@ int std3D_StartScene()
     glEnableVertexAttribArray(attribute_v_color);
     glEnableVertexAttribArray(attribute_v_light);
     glEnableVertexAttribArray(attribute_v_uv);
+
+    // Added (remaster): per-pixel lighting depth input
+    if (attribute_v_invz >= 0) {
+        glVertexAttribPointer(attribute_v_invz, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, nx));
+        glEnableVertexAttribArray(attribute_v_invz);
+    }
     
     return 1;
 }
@@ -984,6 +1009,7 @@ int std3D_EndScene()
     }
 
     glDisableVertexAttribArray(attribute_v_uv);
+    if (attribute_v_invz >= 0) glDisableVertexAttribArray(attribute_v_invz); // Added (remaster)
     glDisableVertexAttribArray(attribute_v_color);
     glDisableVertexAttribArray(attribute_coord3d);
 
@@ -2914,6 +2940,50 @@ void std3D_DrawRenderList()
     }
 
     glUniform2f(uniform_iResolution, width, height);
+
+    // Added (remaster): per-pixel dynamic lights. The camera's light list (blaster bolts,
+    // sabers, explosions, headlights) goes to the shader in camera space, plus what it
+    // needs to rebuild each pixel's camera-space position from depth.
+    {
+        int bPpl = jkPlayer_bPerPixelLighting && rdCamera_g_pCurCamera && rdCamera_g_pCurCamera->pCanvas
+                   && !jkGuiBuildMulti_bRendering && attribute_v_invz >= 0;
+        glUniform1i(uniform_ppl, bPpl);
+        if (bPpl)
+        {
+            static float aPos[STD3D_PPL_MAX_LIGHTS * 4];
+            static float aCol[STD3D_PPL_MAX_LIGHTS * 4];
+            int n = 0;
+            for (int i = 0; i < rdCamera_g_pCurCamera->numLights && n < STD3D_PPL_MAX_LIGHTS; i++)
+            {
+                rdLight* pLight = rdCamera_g_pCurCamera->aLights[i];
+                if (!pLight || pLight->intensity <= 0.0) continue;
+                rdVector3 camPos;
+                rdMatrix_TransformPoint34(&camPos, &rdCamera_g_pCurCamera->aLightPositions[i], &rdCamera_g_pCurCamera->orient);
+                aPos[n*4+0] = camPos.x;
+                aPos[n*4+1] = camPos.y;
+                aPos[n*4+2] = camPos.z;
+                aPos[n*4+3] = pLight->maxRadius;
+                // JK1 lights are white. MotS coloured lights plug in here later.
+                aCol[n*4+0] = 1.0f;
+                aCol[n*4+1] = 1.0f;
+                aCol[n*4+2] = 1.0f;
+                aCol[n*4+3] = pLight->intensity;
+                n++;
+            }
+            glUniform1i(uniform_pplNumLights, n);
+            if (n) {
+                glUniform4fv(uniform_pplLightPos, n, aPos);
+                glUniform4fv(uniform_pplLightCol, n, aCol);
+            }
+            glUniform1f(uniform_pplAtten, rdCamera_g_pCurCamera->attenuationMax);
+            glUniform4f(uniform_pplProj, rdCamera_g_pCurCamera->pCanvas->half_screen_width,
+                        rdCamera_g_pCurCamera->pCanvas->half_screen_height,
+                        rdCamera_g_pCurCamera->focalLength, 0.0f);
+            glUniform4f(uniform_pplScreen, internalWidth, internalHeight, width, height);
+            glUniform1f(uniform_pplSpecular, jkPlayer_specular);
+            glUniform1f(uniform_pplWetness, jkPlayer_wetness);
+        }
+    }
 
     //rdroid_curColorEffects.tint.x = 0.0;
     //rdroid_curColorEffects.tint.y = 0.5;

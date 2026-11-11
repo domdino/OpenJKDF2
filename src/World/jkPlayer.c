@@ -66,6 +66,9 @@ char jkPlayer_gradeLut[SITHCVAR_MAX_STRLEN] = "grade/default.cube"; // Added (re
 flex_t jkPlayer_gradeStrength = 1.0;                        // Added (remaster)
 int jkPlayer_gradeToneCurve = 1;                            // Added (remaster)
 flex_t jkPlayer_gradeExposure = 1.0;                        // Added (remaster)
+int jkPlayer_bPerPixelLighting = 0;                         // Added (remaster)
+flex_t jkPlayer_specular = 1.0;                             // Added (remaster)
+flex_t jkPlayer_wetness = 0.6;                              // Added (remaster)
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -198,6 +201,11 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_gradeStrength",            1.0,                        &jkPlayer_gradeStrength,            CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_gradeToneCurve",           1,                          &jkPlayer_gradeToneCurve,           CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gradeExposure",            1.0,                        &jkPlayer_gradeExposure,            CVARFLAG_LOCAL);
+    // Added (remaster): per-pixel dynamic lights. Specular is overall highlight strength,
+    // wetness is how glossy surfaces are (0 = matte, 1 = soaked).
+    sithCvar_RegisterBool("r_perPixelLighting",         0,                          &jkPlayer_bPerPixelLighting,        CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_specular",                 1.0,                        &jkPlayer_specular,                 CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_wetness",                  0.6,                        &jkPlayer_wetness,                  CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -252,6 +260,9 @@ void jkPlayer_ResetVars()
     jkPlayer_gradeStrength = 1.0;
     jkPlayer_gradeToneCurve = 1;
     jkPlayer_gradeExposure = 1.0;
+    jkPlayer_bPerPixelLighting = 0; // Added (remaster)
+    jkPlayer_specular = 1.0;
+    jkPlayer_wetness = 0.6;
     jkPlayer_gamma = 1.0;
     jkPlayer_bEnableJkgm = 1;
     jkPlayer_bEnableTexturePrecache = 1;
@@ -603,6 +614,9 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveFloat(ext_fpath, "gradestrength", jkPlayer_gradeStrength);
         stdJSON_SaveBool(ext_fpath, "gradetonecurve", jkPlayer_gradeToneCurve);
         stdJSON_SaveFloat(ext_fpath, "gradeexposure", jkPlayer_gradeExposure);
+        stdJSON_SaveBool(ext_fpath, "perpixellighting", jkPlayer_bPerPixelLighting); // Added (remaster)
+        stdJSON_SaveFloat(ext_fpath, "specular", jkPlayer_specular);
+        stdJSON_SaveFloat(ext_fpath, "wetness", jkPlayer_wetness);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -813,6 +827,9 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_gradeStrength = stdJSON_GetFloat(ext_fpath, "gradestrength", jkPlayer_gradeStrength);
         jkPlayer_gradeToneCurve = stdJSON_GetBool(ext_fpath, "gradetonecurve", jkPlayer_gradeToneCurve);
         jkPlayer_gradeExposure = stdJSON_GetFloat(ext_fpath, "gradeexposure", jkPlayer_gradeExposure);
+        jkPlayer_bPerPixelLighting = stdJSON_GetBool(ext_fpath, "perpixellighting", jkPlayer_bPerPixelLighting); // Added (remaster)
+        jkPlayer_specular = stdJSON_GetFloat(ext_fpath, "specular", jkPlayer_specular);
+        jkPlayer_wetness = stdJSON_GetFloat(ext_fpath, "wetness", jkPlayer_wetness);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

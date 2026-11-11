@@ -182,6 +182,32 @@ void sithRender_RenderDebugLights()
 }
 #endif
 
+// Added (remaster): a fixed dynamic light for capture runs, so lighting changes can be
+// compared like for like. OPENJKDF2_CAPTURE_LIGHT="x y z intensity radius" (world units).
+// It goes into the normal camera light list, so the original per-vertex path and the
+// per-pixel path both see exactly the same light.
+static void sithRender_AddCaptureTestLight(void)
+{
+    static int bInit = 0, bHas = 0;
+    static rdLight light;
+    static rdVector3 pos;
+    if (!bInit) {
+        bInit = 1;
+        const char* pEnv = getenv("OPENJKDF2_CAPTURE_LIGHT");
+        float x, y, z, intensity, radius;
+        if (pEnv && sscanf(pEnv, "%f %f %f %f %f", &x, &y, &z, &intensity, &radius) == 5) {
+            rdLight_NewEntry(&light);
+            light.intensity = intensity;
+            light.minRadius = radius;
+            light.maxRadius = radius;
+            pos.x = x; pos.y = y; pos.z = z;
+            bHas = 1;
+        }
+    }
+    if (bHas)
+        rdCamera_AddLight(rdCamera_g_pCurCamera, &light, &pos);
+}
+
 // Added: Fullbright console cheat
 int sithRender_bFullbright = 0;
 
@@ -416,6 +442,7 @@ void sithRender_Draw()
     sithRender_nongeoThingsDrawn = 0;
     sithRender_geoThingsDrawn = 0;
     rdCamera_ClearLights(rdCamera_g_pCurCamera);
+    sithRender_AddCaptureTestLight(); // Added (remaster): no-op outside capture runs
     //printf("------\n");
     sithRender_adjoinSafeguard = 0; // Added: safeguard
 
@@ -2675,6 +2702,10 @@ void sithRender_BuildDynamicLights()
                 tmpLights[numSectorLights++] = curCamera_lights[i];
             }
         }
+        // Added (remaster): with per-pixel lighting the shader adds dynamic lights, so the
+        // per-vertex dynamic term stays zero (avoids lighting everything twice).
+        if (jkPlayer_bPerPixelLighting)
+            numSectorLights = 0;
 
         for (int j = 0; j < sectorIter->numVertices; j++)
         {

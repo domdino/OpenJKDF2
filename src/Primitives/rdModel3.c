@@ -1,4 +1,5 @@
 #include "rdModel3.h"
+#include "World/jkPlayer.h" // Added (remaster): r_perPixelLighting
 
 // Added: on TWL, the big cold model payload arrays (aVertices/UVs/normals/faces/
 // index pools -- word-safe writes only, parsed once) go to the slot-2 extram
@@ -1420,7 +1421,9 @@ int rdModel3_Draw(rdThing *pThing, rdMatrix34 *pPlacement)
     {
         rdModel3_numGeoLights = 0;
         pGeoLight = apGeoLights;
-        for (int lNum = 0; lNum < rdCamera_g_pCurCamera->numLights; lNum++)
+        // Added (remaster): with per-pixel lighting the shader adds dynamic lights instead.
+        int numCameraLights = jkPlayer_bPerPixelLighting ? 0 : rdCamera_g_pCurCamera->numLights;
+        for (int lNum = 0; lNum < numCameraLights; lNum++)
         {
             rdVector3* lightPos = &rdCamera_g_pCurCamera->aLightPositions[lNum];
             rdLight* lightIter = rdCamera_g_pCurCamera->aLights[lNum];

@@ -24,7 +24,7 @@ That breaks down into concrete engine work:
 
 | The look needs | How | Status |
 |---|---|---|
-| Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | In progress |
+| Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | Done (playtesting) |
 | Glints from skylights and glowing grates | Highlights from emissive and sky surfaces | Planned |
 | Haze and light shafts | Depth-based haze, screen-space light shafts | Planned |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
@@ -52,11 +52,15 @@ That breaks down into concrete engine work:
 - [x] Colour grading: exposure, highlight roll-off, live-reloading .cube LUTs
 - [x] Measure the cost of bloom, SSAO and SSAA (130+ fps with everything on)
 - [x] Art direction chosen
-- [ ] Per-pixel lighting with specular highlights ([plan](../docs/stage2-lighting-plan.md))
+- [x] Per-pixel lighting with wet highlights for dynamic lights ([plan](../docs/stage2-lighting-plan.md)), being playtested
 - [ ] Highlights from glowing surfaces (skylights, grates)
 - [ ] Haze and light shafts
 
 ## Latest
+
+Per-pixel lighting, phase 1. The same light near the far wall: the original per-vertex lighting (left) barely shows it; per-pixel (right) gives a proper pool of light and a wet glint on the ceiling ring.
+
+![Per-pixel lighting before and after](../docs/screenshots/stage2-perpixel-light-before-after.png)
 
 Built-in effects, all running natively. Top: original, bloom. Bottom: ambient occlusion, everything on with a test grade.
 

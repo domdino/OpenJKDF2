@@ -74,6 +74,62 @@ in float f_light;
 in vec2 f_uv;
 in vec3 f_coord;
 
+// Added (remaster): per-pixel dynamic lighting (blaster bolts, sabers, explosions, headlights).
+// Static, baked level light still arrives per vertex in f_color; only dynamic lights are
+// computed here, plus Blinn-Phong highlights for the wet look.
+noperspective in float f_invz;          // 1/(32 * camera-space depth)
+uniform int u_ppl;                      // 1 = per-pixel lighting on
+uniform int u_pplNumLights;
+uniform vec4 u_pplLightPos[32];         // camera space xyz (x right, y forward, z up), w = radius
+uniform vec4 u_pplLightCol[32];         // rgb colour, w = intensity
+uniform float u_pplAtten;               // linear falloff per unit distance (as the original)
+uniform vec4 u_pplProj;                 // half screen width, half screen height, focal length
+uniform vec4 u_pplScreen;               // canvas width, canvas height, framebuffer width, height
+uniform float u_pplSpecular;            // overall highlight strength
+uniform float u_pplWetness;             // 0 = matte, 1 = soaked
+
+// Rebuild the camera-space position from screen position and depth, inverting the
+// engine's projection: x = halfW + X*f/Y, y = halfH - Z*f/Y.
+vec3 ppl_viewPos()
+{
+    float depth = 1.0 / (32.0 * max(f_invz, 1e-7));
+    vec2 c = vec2(gl_FragCoord.x * (u_pplScreen.x / u_pplScreen.z),
+                  (u_pplScreen.w - gl_FragCoord.y) * (u_pplScreen.y / u_pplScreen.w));
+    return vec3((c.x - u_pplProj.x) * depth / u_pplProj.z,
+                depth,
+                (u_pplProj.y - c.y) * depth / u_pplProj.z);
+}
+
+void ppl_compute(vec3 P, vec3 N, out vec3 diff, out vec3 spec)
+{
+    diff = vec3(0.0);
+    spec = vec3(0.0);
+    vec3 V = normalize(-P);
+    if (dot(N, V) < 0.0) N = -N;
+    float wet = clamp(u_pplWetness, 0.0, 1.0);
+    float shininess = mix(8.0, 128.0, wet);
+    float specScale = u_pplSpecular * wet;
+
+    for (int i = 0; i < u_pplNumLights; i++)
+    {
+        vec3 Lv = u_pplLightPos[i].xyz - P;
+        float d = length(Lv);
+        if (d >= u_pplLightPos[i].w) continue;
+        float att = u_pplLightCol[i].w - d * u_pplAtten;   // same falloff as the original
+        if (att <= 0.0) continue;
+        vec3 L = Lv / max(d, 1e-5);
+        float ndl = dot(N, L);
+        // Slightly wrapped diffuse: the original applied dynamic light to level geometry
+        // with no angle term at all, so faces turned away shouldn't go fully black.
+        diff += u_pplLightCol[i].rgb * att * clamp((ndl + 0.3) / 1.3, 0.0, 1.0);
+        if (ndl > 0.0)
+        {
+            vec3 H = normalize(L + V);
+            spec += u_pplLightCol[i].rgb * att * pow(max(dot(N, H), 0.0), shininess) * specScale;
+        }
+    }
+}
+
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragColorEmiss;
 layout(location = 2) out vec4 fragColorPos;
@@ -259,6 +315,12 @@ void main(void)
     vec3 face_normals = normals(adjusted_coords_norms);
     vec3 face_normals_parallax = normals(adjusted_coords_parallax);
 
+    // Added (remaster): position and flat face normal for per-pixel lighting. Derivatives
+    // must be taken here, outside any branch.
+    vec3 ppl_P = ppl_viewPos();
+    vec3 ppl_N = normalize(cross(dFdx(ppl_P), dFdy(ppl_P)));
+    vec3 ppl_spec = vec3(0.0);
+
     vec2 adj_texcoords = f_uv;
     if(displacement_factor != 0.0) {
         adj_texcoords = parallax_mapping(f_uv, face_normals_parallax, adjusted_coords_parallax);
@@ -346,6 +408,22 @@ void main(void)
     vec4 effectAdd_color = vec4(colorEffects_add.r, colorEffects_add.g, colorEffects_add.b, 0.0);
     
     main_color *= albedoFactor_copy;
+
+    // Added (remaster): add dynamic lights per pixel on top of the baked vertex light.
+    if (u_ppl != 0 && f_invz > 0.0 && tex_mode != TEX_MODE_TEST)
+    {
+        vec3 ppl_diff;
+        ppl_compute(ppl_P, ppl_N, ppl_diff, ppl_spec);
+        vec3 lit = min(vertex_color.rgb + ppl_diff, vec3(1.0));
+        main_color.rgb = sampled_color.rgb * lit * albedoFactor_copy.rgb;
+
+        // No highlights on see-through or additive faces (sprites, bolts, glass) or on
+        // fullbright surfaces, which are light sources themselves.
+        bool bNoSpec = (blend_mode == D3DBLEND_SRCALPHA || blend_mode == D3DBLEND_INVSRCALPHA
+                        || min(vertex_color.r, min(vertex_color.g, vertex_color.b)) > 0.995);
+        if (bNoSpec) ppl_spec = vec3(0.0);
+        main_color.rgb += ppl_spec * mix(vec3(1.0), sampled_color.rgb, 0.35);
+    }
     float should_write_normals = 1.0;
     float orig_alpha = main_color.a;
 
@@ -472,6 +550,7 @@ if (saberRgbEnabled != 0)
     finalEmiss.rgb = saberRgbColor * emissBrightness;
 }
 
+finalEmiss.rgb += ppl_spec * 0.5; // Added (remaster): wet glints feed the bloom
 fragColorEmiss = finalEmiss;
 
     //fragColor = vec4(face_normals_parallax.x, face_normals_parallax.y, face_normals_parallax.z, 1.0);

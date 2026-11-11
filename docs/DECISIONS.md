@@ -143,3 +143,27 @@ Dom picked north star 2: dark, wet, grimy, atmospheric. What that sets:
 - Per-pixel lighting must support strong, sharp specular highlights.
 - Haze and light shafts from bright sources (skylights, windows) are worth building. Lens streaks: maybe, subtly.
 - Grimy grade v2: the first version crushed the low end on top of an already dark game (average brightness 0.055 vs 0.158 ungraded) and Dom couldn't see anything. v2 keeps only 30% of the toe crush and desaturates to 0.7 instead of 0.6: average 0.135, moody but readable. Lesson: the darkness in north star 2 comes from lighting contrast (pools of light against dark), not from crushing the whole image. docs/screenshots/stage2-grimy-grade-test.png now shows original | v1 | v2.
+
+## 2026-11-11 - Stage 2: per-pixel lighting, phase 1
+
+Done, off by default (`r_perPixelLighting 1` in the in-game console to try it; backtick opens the console). Plan: docs/stage2-lighting-plan.md.
+
+**How it works**
+- Depth: the render cache already stores 1/(32 x view depth) in each GPU vertex (`D3DVERTEX.nx`). It's passed to the shader as `v_invz` with `noperspective` interpolation (1/depth is linear in screen space), which gives exact camera-space depth per pixel. No change to the CPU vertex pipeline was needed. (The vertex `z` turned out not to be usable: with `rdCache_dword_865258 == 16` it's 1/(depth x farPlane), not a 0-1 depth.)
+- Position: inverts `rdCamera_PerspProject` (x = halfW + X*f/Y, y = halfH - Z*f/Y) using `gl_FragCoord`, canvas size and focal length. Normal: flat face normal from screen-space derivatives of that position.
+- Lights: every world draw uploads the camera's light list (up to 32), transformed to camera space with `rdCamera.orient`. Same linear falloff as the original (intensity - distance x attenuationMax, cut at maxRadius). Diffuse is slightly wrapped, because the original applied dynamic light to level geometry with no angle term at all.
+- Highlights: Blinn-Phong, shininess 8 to 128 from `r_wetness` (default 0.6), strength `r_specular` (default 1.0). None on see-through, additive or fullbright faces. Highlights also feed the bloom buffer, so wet glints glow.
+- No double lighting: with per-pixel on, `sithRender_BuildDynamicLights` leaves the per-vertex dynamic term at zero and `rdModel3` skips gathering camera lights. Baked static light is untouched.
+- Important correction to the plan: on the GL path, lighting isn't applied through the 8-bit light tables; it arrives as the per-vertex colour (`f_color`). The light tables only feed the glow buffer. So per-pixel light adds to that colour.
+
+**Verification (silent captures, spawn room)**
+- Test light: capture-only `OPENJKDF2_CAPTURE_LIGHT="x y z intensity radius"` injects a fixed dynamic light into the normal light list, so both paths light the same thing.
+- With the test light: the per-vertex original barely shows it (spread thin across big faces). Per-pixel gives a clear pool on the far wall and a wet glint on the ceiling ring. docs/screenshots/stage2-perpixel-light-before-after.png.
+- Brightness match: whole-frame average 0.174 per-vertex vs 0.181 per-pixel (+4%). With no test light, models in the room (the body, the gun) come out 3-5% brighter per-pixel. The level has a dynamic light here, now applied with a different shape. Acceptable.
+- Frame rate: no measurable cost at 1280x960; run-to-run noise (135-173 fps) is bigger than any difference.
+
+**Known limits / next**
+- Flat derivative normals: correct on JK's flat level faces, faceted on models. Fine for now; Stage 4 models can bring real normals.
+- Light colour is white for JK1. MotS coloured lights plug into the colour uniform later.
+- Needs a play session from Dom (blaster fights, sabers, explosions) before it's switched on by default.
+- Phase 2 (highlights from skylights and glowing surfaces) is what makes the static scene look wet. Today's highlights only come from dynamic lights.

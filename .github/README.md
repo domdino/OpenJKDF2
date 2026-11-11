@@ -81,7 +81,8 @@ That breaks down into concrete engine work:
 - [x] Raise the per-part limits for detailed models (8192 vertices per mesh)
 - [x] Skinning: one continuous mesh bends with the original skeleton, so every original animation drives modern characters (tested pixel-identical)
 - [x] Fit Jedi Academy's Kyle onto JK's skeleton (tools/blender/ja_to_jk.py): in game, driven by the original animations
-- [ ] Stormtrooper and the rest of the cast from Jedi Academy
+- [x] Stormtrooper from Jedi Academy (keeps JK's own rifle as a rigid part)
+- [ ] The rest of the cast from Jedi Academy (officers, Rodians, Grans, Jan, dark Jedi...)
 - [ ] Material pass on the converted characters (Texture God)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper

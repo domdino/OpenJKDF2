@@ -69,6 +69,8 @@ def main():
 
     dims = {}
     for mat_name in m.materials:
+        if mat_name not in info["textures"]:
+            continue  # an original JK material on a kept rigid part
         src = info["textures"].get(mat_name)
         if src and os.path.exists(src):
             img = Image.open(src).convert("RGB")
@@ -92,7 +94,7 @@ def main():
         print("  %-28s %s" % (mat_name, os.path.basename(src) if src else "(grey)"))
 
     if info.get("uv_fraction"):
-        me = m.geosets[0][0]
+        me = m.geosets[0][info.get("skin_mesh", 0)]
         uvs = list(me.uvs)
         for f in me.faces:
             w, h = dims[m.materials[f["mat"]]]

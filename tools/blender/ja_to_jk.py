@@ -30,33 +30,52 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import jk3do  # noqa: E402
 
-# JA bone -> JK node (by name). Fingers, face bones and twist bones fold into their limb.
+# JA bone -> JK skeleton role. A role is matched to the JK model's node whose name ends with it
+# (k_lthigh, stlthigh, ...). Fingers, face bones and twist bones fold into their limb.
 BONE_MAP = {
-    "model_root": "k_hip", "pelvis": "k_hip", "Motion": "k_hip", "lower_lumbar": "k_hip",
-    "upper_lumbar": "k_torso", "thoracic": "k_torso", "lclavical": "k_torso", "rclavical": "k_torso",
-    "cervical": "k_neck",
-    "cranium": "k_head", "face": "k_head", "jaw": "k_head", "ceyebrow": "k_head", "leye": "k_head",
-    "reye": "k_head", "lblip2": "k_head", "rblip2": "k_head", "ltlip2": "k_head", "rtlip2": "k_head",
-    "lfemurYZ": "k_lthigh", "lfemurX": "k_lthigh", "ltibia": "k_lcalf", "ltalus": "k_lfoot", "ltail": "k_lthigh",
-    "rfemurYZ": "k_rthigh", "rfemurX": "k_rthigh", "rtibia": "k_rcalf", "rtalus": "k_rfoot", "rtail": "k_rthigh",
-    "lhumerus": "k_lshouldr", "lhumerusX": "k_lshouldr", "lradius": "k_lforearm", "lradiusX": "k_lforearm",
-    "lhand": "k_lhand", "lhang_tag_bone": "k_lhand",
-    "rhumerus": "k_rshouldr", "rhumerusX": "k_rshouldr", "rradius": "k_rforearm", "rradiusX": "k_rforearm",
-    "rhand": "k_rhand", "rhang_tag_bone": "k_rhand",
+    "model_root": "hip", "pelvis": "hip", "Motion": "hip", "lower_lumbar": "hip",
+    "upper_lumbar": "torso", "thoracic": "torso", "lclavical": "torso", "rclavical": "torso",
+    "cervical": "neck",
+    "cranium": "head", "face": "head", "jaw": "head", "ceyebrow": "head", "leye": "head",
+    "reye": "head", "lblip2": "head", "rblip2": "head", "ltlip2": "head", "rtlip2": "head",
+    "lfemurYZ": "lthigh", "lfemurX": "lthigh", "ltibia": "lcalf", "ltalus": "lfoot", "ltail": "lthigh",
+    "rfemurYZ": "rthigh", "rfemurX": "rthigh", "rtibia": "rcalf", "rtalus": "rfoot", "rtail": "rthigh",
+    "lhumerus": "lshouldr", "lhumerusX": "lshouldr", "lradius": "lforearm", "lradiusX": "lforearm",
+    "lhand": "lhand", "lhang_tag_bone": "lhand",
+    "rhumerus": "rshouldr", "rhumerusX": "rshouldr", "rradius": "rforearm", "rradiusX": "rforearm",
+    "rhand": "rhand", "rhang_tag_bone": "rhand",
 }
 for side in "lr":
     for d in ("d1", "d2", "d3", "d4", "d5"):
         for j in ("j1", "j2", "j3"):
-            BONE_MAP["%s_%s_%s" % (side, d, j)] = "k_%shand" % side
+            BONE_MAP["%s_%s_%s" % (side, d, j)] = "%shand" % side
 
-# Bones snapped onto JK joints, parents first: bone -> (JK node, child bone aimed at the next joint)
+# Bones snapped onto JK joints, parents first: bone -> (role, child bone aimed at the next joint)
 SNAP = [
-    ("lfemurYZ", "k_lthigh", "ltibia"), ("ltibia", "k_lcalf", "ltalus"), ("ltalus", "k_lfoot", None),
-    ("rfemurYZ", "k_rthigh", "rtibia"), ("rtibia", "k_rcalf", "rtalus"), ("rtalus", "k_rfoot", None),
-    ("lhumerus", "k_lshouldr", "lradius"), ("lradius", "k_lforearm", "lhand"), ("lhand", "k_lhand", None),
-    ("rhumerus", "k_rshouldr", "rradius"), ("rradius", "k_rforearm", "rhand"), ("rhand", "k_rhand", None),
-    ("cervical", "k_neck", "cranium"), ("cranium", "k_head", None),
+    ("lfemurYZ", "lthigh", "ltibia"), ("ltibia", "lcalf", "ltalus"), ("ltalus", "lfoot", None),
+    ("rfemurYZ", "rthigh", "rtibia"), ("rtibia", "rcalf", "rtalus"), ("rtalus", "rfoot", None),
+    ("lhumerus", "lshouldr", "lradius"), ("lradius", "lforearm", "lhand"), ("lhand", "lhand", None),
+    ("rhumerus", "rshouldr", "rradius"), ("rradius", "rforearm", "rhand"), ("rhand", "rhand", None),
+    ("cervical", "neck", "cranium"), ("cranium", "head", None),
 ]
+
+
+# A role the JK model lacks falls back to these (the stormtrooper has no neck node).
+ROLE_FALLBACK = {"neck": "torso"}
+
+
+def resolve_roles(jk):
+    """role -> node index for this JK model."""
+    names = [nd.name.lower() for nd in jk.nodes]
+    out = {}
+    for role in set(BONE_MAP.values()):
+        cands = [i for i, n in enumerate(names) if n.endswith(role)]
+        if cands:
+            out[role] = min(cands, key=lambda i: len(names[i]))
+    for role, fb in ROLE_FALLBACK.items():
+        if role not in out and fb in out:
+            out[role] = out[fb]
+    return out
 
 
 def log(*a):
@@ -68,10 +87,12 @@ def visible_lod0():
     return [o for o in root0.children_recursive
             if o.type == "MESH" and "_cap_" not in o.name.lower() and "_off" not in o.name.lower()
             and not o.name.startswith("*")  # Ghoul2 tags (bolt points), not geometry
+            and o.name.split(".")[0].lower() not in SKIN_OFF and o.name.lower().rsplit("_", 1)[0] not in SKIN_OFF
             and not o.hide_render and not o.hide_get()]
 
 
 SKIN_MAP = {}
+SKIN_OFF = set()
 
 
 def load_skin(base, glm, skin):
@@ -83,6 +104,9 @@ def load_skin(base, glm, skin):
         if "," not in line:
             continue
         surf, tex = [x.strip() for x in line.split(",", 1)]
+        if tex.lower().endswith("off"):  # "*off": surface hidden in this skin
+            SKIN_OFF.add(surf.lower())
+            continue
         stem = os.path.splitext(os.path.join(base, tex))[0]
         for ext in (".jpg", ".png", ".tga", ".JPG", ".PNG", ".TGA"):
             if os.path.exists(stem + ext):
@@ -116,6 +140,9 @@ def object_image(o):
 
 def render(path, objs):
     sc = bpy.context.scene
+    for o in bpy.data.objects:  # show exactly what was exported
+        if o.type == "MESH":
+            o.hide_render = o not in objs
     pts = [o.matrix_world @ Vector(c) for o in objs for c in o.bound_box]
     lo = Vector([min(p[i] for p in pts) for i in range(3)])
     hi = Vector([max(p[i] for p in pts) for i in range(3)])
@@ -140,15 +167,20 @@ def main():
     argv = sys.argv[sys.argv.index("--") + 1:]
     glm, base, skin, template, out_dir, name = argv[:6]
     do_render = "--render" in argv
+    # --keep stgun,...: keep the JK model's own rigid meshes on these nodes (e.g. the trooper's rifle)
+    keep = argv[argv.index("--keep") + 1].lower().split(",") if "--keep" in argv else []
     os.makedirs(out_dir, exist_ok=True)
     addon_utils.enable("jediacademy", default_set=True)
 
     # JK skeleton: joint (rotation centre) of every node at rest, in model space
     jk = jk3do.load(template)
     rest = jk3do.rest_matrices(jk)
-    node_idx = {nd.name.lower(): i for i, nd in enumerate(jk.nodes)}
-    joint = {nd.name.lower(): Vector((rest[i] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1])[:3])
-             for i, nd in enumerate(jk.nodes)}
+    roles = resolve_roles(jk)
+    native = {r for r, i in roles.items() if jk.nodes[i].name.lower().endswith(r)}
+    log("JK nodes for roles:", {r: jk.nodes[i].name for r, i in sorted(roles.items())})
+    joint_of = [Vector((rest[i] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1])[:3]) for i, nd in enumerate(jk.nodes)]
+    joint = {r: joint_of[i] for r, i in roles.items()}
+    snap = [(b, r, c) for b, r, c in SNAP if r in native]
     zs = []
     for k, me in enumerate(jk.geosets[0]):
         ns = [i for i, nd in enumerate(jk.nodes) if nd.mesh == k]
@@ -171,7 +203,7 @@ def main():
     pelvis = arm.matrix_world @ arm.data.bones["pelvis"].head_local
     rot = Matrix.Rotation(math.pi, 4, "Z")
     p2 = rot @ pelvis
-    hip = joint["k_hip"]
+    hip = joint["hip"]
     G = Matrix.Translation((hip.x - p2.x * s, hip.y - p2.y * s, jk_lo - ja_lo * s)) @ Matrix.Scale(s, 4) @ rot
     tops = [o for o in bpy.data.objects if o.parent is None]
     for o in tops:
@@ -187,7 +219,7 @@ def main():
         eb.use_connect = False
     bpy.ops.object.mode_set(mode="POSE")
     Ainv = arm.matrix_world.inverted()
-    for bone, node, child in SNAP:
+    for bone, node, child in snap:
         pb = arm.pose.bones.get(bone)
         if not pb:
             continue
@@ -196,12 +228,15 @@ def main():
         R = M.to_3x3()
         if child:
             cur = arm.pose.bones[child].head - pb.head
-            nxt = [c for b, c2, _ in SNAP for c in [c2] if b == child][0]
+            nxt = [c2 for b, c2, _ in snap if b == child]
+            if not nxt:
+                continue
+            nxt = nxt[0]
             tgt = (Ainv @ joint[nxt]) - h
             R = cur.rotation_difference(tgt).to_matrix() @ R
         pb.matrix = Matrix.Translation(h) @ R.to_4x4()
         bpy.context.view_layer.update()
-    errs = {b: ((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]).length for b, n, _ in SNAP if b in arm.pose.bones}
+    errs = {b: ((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]).length for b, n, _ in snap if b in arm.pose.bones}
     log("max joint error after snapping: %.6f" % max(errs.values()), {b: round(e, 5) for b, e in errs.items() if e > 1e-4})
 
     bpy.ops.object.mode_set(mode="OBJECT")
@@ -236,8 +271,8 @@ def main():
             for g in vo.groups:
                 jkn = BONE_MAP.get(groups.get(g.group, ""))
                 if jkn and g.weight > 0:
-                    acc[node_idx[jkn.lower()]] = acc.get(node_idx[jkn.lower()], 0) + g.weight
-            ws = sorted(acc.items(), key=lambda kv: -kv[1])[:4] or [(node_idx["k_hip"], 1.0)]
+                    acc[roles[jkn]] = acc.get(roles[jkn], 0) + g.weight
+            ws = sorted(acc.items(), key=lambda kv: -kv[1])[:4] or [(roles["hip"], 1.0)]
             tot = sum(w for _, w in ws)
             weights.append([(n_, w / tot) for n_, w in ws])
         uvl = me.uv_layers.active
@@ -253,16 +288,47 @@ def main():
                               "extralight": 0.0, "idx": idx})
             out.face_normals.append((pn.x, pn.y, pn.z))
         oe.to_mesh_clear()
+    # The skin hangs from the root node: express it in that node's rest space.
+    import numpy as np
+    inv0 = np.linalg.inv(rest[0])
+    R0 = inv0[:3, :3]
+    out.verts = [tuple((inv0 @ [v[0], v[1], v[2], 1])[:3]) + (v[3],) for v in out.verts]
+    out.normals = [tuple(R0 @ n) for n in out.normals]
+    out.face_normals = [tuple(R0 @ n) for n in out.face_normals]
     out.radius = max(Vector(v[:3]).length for v in out.verts)
 
-    jk.materials = mats
-    jk.geosets = [[out]]
-    for nd in jk.nodes:
-        nd.mesh = -1
-    jk.nodes[0].mesh = 0
-    json.dump({"textures": textures, "uv_fraction": True}, open(os.path.join(out_dir, "textures.json"), "w"), indent=1)
+    # Kept rigid parts (e.g. the rifle) come first, with their original materials.
+    geo = []
+    old_geo = jk.geosets[0]
+    old_mats = jk.materials
+    new_mats = []
+    kept_nodes = [i for i, nd in enumerate(jk.nodes) if nd.name.lower() in keep and nd.mesh >= 0]
+    for i in kept_nodes:
+        me = old_geo[jk.nodes[i].mesh]
+        for f in me.faces:
+            mname = old_mats[f["mat"]]
+            if mname not in new_mats:
+                new_mats.append(mname)
+            f["mat"] = new_mats.index(mname)
+        jk.nodes[i].mesh = len(geo)
+        geo.append(me)
+    offset = len(new_mats)
+    for f in out.faces:
+        f["mat"] += offset
+    jk.materials = new_mats + mats
+    skin_idx = len(geo)
+    geo.append(out)
+    jk.geosets = [geo]
+    for i, nd in enumerate(jk.nodes):
+        if i not in kept_nodes:
+            nd.mesh = -1
+    jk.nodes[0].mesh = skin_idx
+    if kept_nodes:
+        log("kept rigid:", [jk.nodes[i].name for i in kept_nodes])
+    json.dump({"textures": textures, "uv_fraction": True, "skin_mesh": skin_idx},
+              open(os.path.join(out_dir, "textures.json"), "w"), indent=1)
     jk3do.save(jk, os.path.join(out_dir, name + ".3do"), "%s converted from %s (%s skin) by tools/blender/ja_to_jk.py" % (name, glm, skin))
-    jk3do.write_skin(os.path.join(out_dir, name + ".skn"), [(0, 0, weights)])
+    jk3do.write_skin(os.path.join(out_dir, name + ".skn"), [(0, skin_idx, weights)])
     log("wrote %s: %d vertices, %d faces, %d materials" % (name, len(out.verts), len(out.faces), len(mats)))
     if do_render:
         render(os.path.join(out_dir, name + "_preview.png"), meshes)

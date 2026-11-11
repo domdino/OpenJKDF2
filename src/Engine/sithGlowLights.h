@@ -16,4 +16,8 @@ int sithGlowLights_Count(void);
 // camera space: aPos = xyz + radius, aCol = rgb + intensity. Returns how many were written.
 int sithGlowLights_Gather(rdCamera* pCamera, float* aPos, float* aCol, int maxLights);
 
+// Representative colour of a material (its glowing texels if it has enough, else all
+// texels), normalised so the brightest channel is 1. Returns 0 if it can't be read.
+int sithGlowLights_MaterialColor(rdMaterial* pMat, float* pOutRGB);
+
 #endif // _SITHGLOWLIGHTS_H

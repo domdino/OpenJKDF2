@@ -50,7 +50,9 @@ std::string stdUpdater_strDlFname;
 bool stdUpdater_bDownloading;
 bool stdUpdater_bFoundUpdate;
 bool stdUpdater_bCompletedUpdate;
-int stdUpdater_bDisableUpdates = 0;
+// Added (remaster): off by default. This fork isn't an upstream release, so it shouldn't
+// offer upstream builds, and the check made a network connection on every launch.
+int stdUpdater_bDisableUpdates = 1;
 int stdUpdater_bTestUpdate = 0;
 
 char stdUpdater_pUpdaterUrl[SITHCVAR_MAX_STRLEN];
@@ -63,7 +65,7 @@ void stdUpdater_StartupCvars()
 #ifdef TARGET_RETRO_HOMEBREW
     return;
 #endif
-    sithCvar_RegisterBool("net_disableUpdates", 0, &stdUpdater_bDisableUpdates, CVARFLAG_GLOBAL);
+    sithCvar_RegisterBool("net_disableUpdates", 1, &stdUpdater_bDisableUpdates, CVARFLAG_GLOBAL); // Added (remaster): was 0
     sithCvar_RegisterBool("net_testUpdate", 0, &stdUpdater_bTestUpdate, CVARFLAG_GLOBAL | CVARFLAG_UPDATABLE_DEFAULT);
     sithCvar_RegisterStr("net_updaterUrl", STDUPDATER_DEFAULT_URL, &stdUpdater_pUpdaterUrl, CVARFLAG_GLOBAL | CVARFLAG_UPDATABLE_DEFAULT);
     sithCvar_RegisterStr("net_win64UpdateFilename", STDUPDATER_DEFAULT_WIN64_FILENAME, &stdUpdater_pWin64UpdateFilename, CVARFLAG_GLOBAL | CVARFLAG_UPDATABLE_DEFAULT);

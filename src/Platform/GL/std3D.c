@@ -12,6 +12,7 @@
 #include "Engine/rdCamera.h" // Added (remaster): per-pixel lighting
 #include "Primitives/rdMatrix.h"
 #include "Engine/sithGlowLights.h" // Added (remaster): glow-light highlights
+#include "Engine/sithRender.h"
 #include "General/stdBitmap.h"
 #include "stdPlatform.h"
 
@@ -2968,12 +2969,27 @@ void std3D_DrawRenderList()
                 aPos[n*4+1] = camPos.y;
                 aPos[n*4+2] = camPos.z;
                 aPos[n*4+3] = pLight->maxRadius;
-                // JK1 lights are white. MotS coloured lights plug in here later.
-                aCol[n*4+0] = 1.0f;
-                aCol[n*4+1] = 1.0f;
-                aCol[n*4+2] = 1.0f;
+                // White unless the light has a colour this frame (sabers take the blade's
+                // colour). MotS coloured lights plug in here later.
+                float rgb[3] = {1.0f, 1.0f, 1.0f};
+                sithRender_GetLightColor(pLight, rgb);
+                aCol[n*4+0] = rgb[0];
+                aCol[n*4+1] = rgb[1];
+                aCol[n*4+2] = rgb[2];
                 aCol[n*4+3] = pLight->intensity;
                 n++;
+            }
+            // Debug: OPENJKDF2_PPL_DEBUG=1 prints the light list every 120 frames.
+            {
+                static int dbg = -1, dbgFrame = -1;
+                if (dbg < 0) { const char* e = getenv("OPENJKDF2_PPL_DEBUG"); dbg = (e && e[0] == '1'); }
+                if (dbg && dbgFrame != std3D_frameCount && (std3D_frameCount % 120) == 0) {
+                    dbgFrame = std3D_frameCount;
+                    stdPlatform_Printf("ppl: %d lights (camera has %d), atten %.3f\n", n, rdCamera_g_pCurCamera->numLights, rdCamera_g_pCurCamera->attenuationMax);
+                    for (int i = 0; i < n; i++)
+                        stdPlatform_Printf("  cam %.2f %.2f %.2f r=%.2f i=%.2f col=%.2f %.2f %.2f\n",
+                                           aPos[i*4], aPos[i*4+1], aPos[i*4+2], aPos[i*4+3], aCol[i*4+3], aCol[i*4], aCol[i*4+1], aCol[i*4+2]);
+                }
             }
             glUniform1i(uniform_pplNumLights, n);
             if (n) {

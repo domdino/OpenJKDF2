@@ -70,4 +70,7 @@ void sithRender_RenderDebugLight(flex_t intensity, rdVector3* pos);
 //static void (*sithRender_RenderAlphaSurfaces_)() = (void*)sithRender_RenderAlphaAdjoins_ADDR;
 //static int (*sithRender_RenderThing)(SithThing *a2) = (void*)sithRender_RenderThing_ADDR;
 
+// Added (remaster): per-frame colour for a camera light, if it has one (sabers).
+int sithRender_GetLightColor(const rdLight* pLight, float* pOutRGB);
+
 #endif // _SITHRENDER_H

@@ -24,6 +24,7 @@
 #include "Primitives/rdModel3.h"
 #include "Primitives/rdPrimit3.h"
 #include "World/jkPlayer.h"
+#include "Engine/sithGlowLights.h" // Added (remaster)
 #include "Gameplay/sithPlayer.h"
 #include "World/sithSector.h"
 #include "World/sithWorld.h"
@@ -206,6 +207,64 @@ static void sithRender_AddCaptureTestLight(void)
     }
     if (bHas)
         rdCamera_AddLight(rdCamera_g_pCurCamera, &light, &pos);
+}
+
+// Added (remaster): colours for this frame's thing lights, kept beside the engine's own
+// rdLight structs (whose colour field MotS lighting uses). Only sabers get one for now:
+// the blade's colour, or the player's custom saberrgb colour.
+static float sithRender_aThingLightRGB[0x20][3];
+static uint8_t sithRender_aThingLightHasRGB[0x20];
+
+// Debug (OPENJKDF2_PPL_DEBUG=1): log actors seen by the light gather, once per thing.
+static int sithRender_DebugSaberActor(SithThing* thing)
+{
+    static int dbg = -1;
+    static SithThing* aSeen[64];
+    static int numSeen = 0;
+    if (dbg < 0) { const char* e = getenv("OPENJKDF2_PPL_DEBUG"); dbg = (e && e[0] == '1'); }
+    if (!dbg || thing->type != SITH_THING_ACTOR) return 1;
+    for (int i = 0; i < numSeen; i++) if (aSeen[i] == thing) return 1;
+    if (numSeen < 64) aSeen[numSeen++] = thing;
+    stdPlatform_Printf("ppl: actor %s jkFlags %x playerInfo %p polylineMat %p emitlight %d\n",
+                       thing->aName, thing->jkFlags, (void*)thing->playerInfo,
+                       thing->playerInfo ? (void*)thing->playerInfo->polyline.face.material : NULL,
+                       !!(thing->flags & SITH_TF_EMITLIGHT));
+    return 1;
+}
+
+static void sithRender_SetSaberLightColor(int lightIdx, SithThing* thing)
+{
+    if (lightIdx < 0 || lightIdx >= 0x20) return;
+    float rgb[3];
+    int ok = 0;
+    extern int jkSaber_rgbEnabled;
+    extern float jkSaber_rgbRed, jkSaber_rgbGreen, jkSaber_rgbBlue;
+    if (jkSaber_rgbEnabled && sithWorld_g_pCurrentWorld && thing == sithWorld_g_pCurrentWorld->pLocalPlayer) {
+        rgb[0] = jkSaber_rgbRed; rgb[1] = jkSaber_rgbGreen; rgb[2] = jkSaber_rgbBlue;
+        ok = 1;
+    }
+    else if (thing->playerInfo && thing->playerInfo->polyline.face.material) {
+        ok = sithGlowLights_MaterialColor(thing->playerInfo->polyline.face.material, rgb);
+        static int dbg = -1;
+        if (dbg < 0) { const char* e = getenv("OPENJKDF2_PPL_DEBUG"); dbg = (e && e[0] == '1'); }
+        if (dbg && !ok) {
+            rdMaterial* m = thing->playerInfo->polyline.face.material;
+            tVBuffer* b = (m->textures && m->num_textures) ? m->textures[0].texture_struct[0] : NULL;
+            stdPlatform_Printf("ppl: saber colour lookup failed for %s (textures %d, buffer %p, 16bit %d)\n",
+                               m->mat_fpath, (int)m->num_textures, (void*)b, b ? (int)b->format.format.is16bit : -1);
+        }
+    }
+    if (!ok) return;
+    memcpy(sithRender_aThingLightRGB[lightIdx], rgb, sizeof(rgb));
+    sithRender_aThingLightHasRGB[lightIdx] = 1;
+}
+
+int sithRender_GetLightColor(const rdLight* pLight, float* pOutRGB)
+{
+    ptrdiff_t idx = pLight - sithRender_aThingLights;
+    if (idx < 0 || idx >= 0x20 || !sithRender_aThingLightHasRGB[idx]) return 0;
+    memcpy(pOutRGB, sithRender_aThingLightRGB[idx], sizeof(float) * 3);
+    return 1;
 }
 
 // Added: Fullbright console cheat
@@ -443,6 +502,7 @@ void sithRender_Draw()
     sithRender_geoThingsDrawn = 0;
     rdCamera_ClearLights(rdCamera_g_pCurCamera);
     sithRender_AddCaptureTestLight(); // Added (remaster): no-op outside capture runs
+    memset(sithRender_aThingLightHasRGB, 0, sizeof(sithRender_aThingLightHasRGB)); // Added (remaster)
     //printf("------\n");
     sithRender_adjoinSafeguard = 0; // Added: safeguard
 
@@ -774,10 +834,27 @@ void sithRender_BuildVisibleSectorList(SithSector *pSector, rdClipFrustum *pFrus
                     if ( thing->actorParams.timeLeftLengthChange > 0.0 )
                     {
                         sithRender_aThingLights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
+                        sithRender_SetSaberLightColor(lightIdx, thing); // Added (remaster): blade-coloured light
                         rdCamera_AddLight(rdCamera_g_pCurCamera, &sithRender_aThingLights[lightIdx], &thing->actorParams.saberBladePos);
                         lightIdx = ++sithRender_numThingLights;
                     }
                 }
+            }
+            // Added (remaster): with per-pixel lighting, every lit saber casts light in its
+            // blade's colour (the original only lit the player's). Off = original behaviour.
+            if (jkPlayer_bPerPixelLighting && sithRender_DebugSaberActor(thing) && lightIdx < 0x20
+                && thing->type == SITH_THING_ACTOR // the player already has its own saber light
+                && !(thing->flags & SITH_TF_EMITLIGHT)
+                && !(thing->flags & (SITH_TF_DISABLED|SITH_TF_10|SITH_TF_DESTROYED))
+                && (thing->jkFlags & JKFLAG_SABERON) && thing->playerInfo
+                && thing->playerInfo->polyline.face.material)
+            {
+                // saberBladePos isn't kept up to date for AI wielders, so the light sits at the
+                // wielder: the pool lands on the floor around them, as in the goal images.
+                sithRender_aThingLights[lightIdx].intensity = 0.7;
+                sithRender_SetSaberLightColor(lightIdx, thing);
+                rdCamera_AddLight(rdCamera_g_pCurCamera, &sithRender_aThingLights[lightIdx], &thing->position);
+                lightIdx = ++sithRender_numThingLights;
             }
             thing = thing->pNextThingInSector;
         }
@@ -1122,10 +1199,27 @@ void sithRender_NoClip(SithSector *sector, rdClipFrustum *frustumArg, flex_t pre
                     if ( thing->actorParams.timeLeftLengthChange > 0.0 )
                     {
                         sithRender_aThingLights[lightIdx].intensity = thing->actorParams.timeLeftLengthChange;
+                        sithRender_SetSaberLightColor(lightIdx, thing); // Added (remaster): blade-coloured light
                         rdCamera_AddLight(rdCamera_g_pCurCamera, &sithRender_aThingLights[lightIdx], &thing->actorParams.saberBladePos);
                         lightIdx = ++sithRender_numThingLights;
                     }
                 }
+            }
+            // Added (remaster): with per-pixel lighting, every lit saber casts light in its
+            // blade's colour (the original only lit the player's). Off = original behaviour.
+            if (jkPlayer_bPerPixelLighting && sithRender_DebugSaberActor(thing) && lightIdx < 0x20
+                && thing->type == SITH_THING_ACTOR // the player already has its own saber light
+                && !(thing->flags & SITH_TF_EMITLIGHT)
+                && !(thing->flags & (SITH_TF_DISABLED|SITH_TF_10|SITH_TF_DESTROYED))
+                && (thing->jkFlags & JKFLAG_SABERON) && thing->playerInfo
+                && thing->playerInfo->polyline.face.material)
+            {
+                // saberBladePos isn't kept up to date for AI wielders, so the light sits at the
+                // wielder: the pool lands on the floor around them, as in the goal images.
+                sithRender_aThingLights[lightIdx].intensity = 0.7;
+                sithRender_SetSaberLightColor(lightIdx, thing);
+                rdCamera_AddLight(rdCamera_g_pCurCamera, &sithRender_aThingLights[lightIdx], &thing->position);
+                lightIdx = ++sithRender_numThingLights;
             }
             thing = thing->pNextThingInSector;
         }

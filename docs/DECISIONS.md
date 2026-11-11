@@ -189,3 +189,14 @@ Dom also supplied AI reimaginings of these exact views (plus 07yun, 10cargo, 14t
 - Screen-space reflections on glossy surfaces (the wet floors). The shader already rebuilds camera-space position and normal per pixel, so these can go into the existing G-buffer targets for a post pass.
 - Coloured light for sabers (and other coloured dynamic lights): currently white.
 - Haze and light shafts (phase 3).
+
+## 2026-11-11 - Coloured saber light, update check off
+
+**Saber light colour (needs r_perPixelLighting)**
+- The original only lights the player's saber (things flagged EMITLIGHT). Boc's sabers emit nothing in the game data, so the pink pool in the goal images needed an addition: with per-pixel lighting on, every AI actor with a lit saber (JKFLAG_SABERON, a saber polyline) casts a light in its blade's colour. Off = original behaviour.
+- Position: AI wielders don't keep `saberBladePos` up to date, so the light sits at the wielder's position. The pool lands on the floor around them, which is what the goal images show.
+- Colour: average of the blade material's clearly saturated texels (a blade is a white core with coloured edges; a plain average comes out white). The player's custom saberrgb colour wins when enabled. Colours live in a side table beside sithRender_aThingLights, not in rdLight.color, which MotS lighting uses.
+- Result: Boc throws a pink pool on the floor (docs/screenshots/stage2-saber-light-colour.png). The player's saber is now properly green.
+- Debug: OPENJKDF2_PPL_DEBUG=1 logs the light list every 120 frames, actors seen by the gather, and saber colour lookup failures.
+
+**Update check off by default**: the engine checked GitHub for upstream releases on every launch (Little Snitch flagged it each time, as every rebuild changes the checksum). This fork shouldn't offer upstream builds anyway. `net_disableUpdates` now defaults to 1 and is set in the local saved settings.

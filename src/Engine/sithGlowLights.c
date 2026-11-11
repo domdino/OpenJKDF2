@@ -35,6 +35,7 @@ typedef struct sithGlowMatInfo
     float glowFrac;      // fraction of texels that glow
     float glowColor[3];  // average colour of glowing texels, 0..1
     float allColor[3];   // average colour of all texels, 0..1
+    float satColor[3];   // average colour of clearly coloured texels (0 if none), 0..1
 } sithGlowMatInfo;
 
 static SithWorld* sithGlowLights_pWorld = NULL;
@@ -104,13 +105,18 @@ static sithGlowMatInfo* sithGlowLights_MatInfo(SithWorld* pWorld, rdMaterial* pM
     if (w <= 0 || h <= 0) return pInfo;
 
     rdColormap* pCmp = &pWorld->colormaps[0];
-    double gsum[3] = {0, 0, 0}, asum[3] = {0, 0, 0};
-    int nGlow = 0, nAll = 0;
+    double gsum[3] = {0, 0, 0}, asum[3] = {0, 0, 0}, ssum[3] = {0, 0, 0};
+    int nGlow = 0, nAll = 0, nSat = 0;
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             uint8_t idx = pPix[y * pitch + x];
             const rdColor24* c = &pCmp->colors[idx];
             asum[0] += c->r; asum[1] += c->g; asum[2] += c->b; nAll++;
+            int mx = c->r > c->g ? c->r : c->g; if (c->b > mx) mx = c->b;
+            int mn = c->r < c->g ? c->r : c->g; if (c->b < mn) mn = c->b;
+            if (mx > 40 && (mx - mn) > 0.3f * mx) { // saturated, not near-black
+                ssum[0] += c->r; ssum[1] += c->g; ssum[2] += c->b; nSat++;
+            }
             if (sithGlowLights_aIsGlowIndex[idx]) {
                 gsum[0] += c->r; gsum[1] += c->g; gsum[2] += c->b; nGlow++;
             }
@@ -120,6 +126,7 @@ static sithGlowMatInfo* sithGlowLights_MatInfo(SithWorld* pWorld, rdMaterial* pM
     for (int k = 0; k < 3; k++) {
         pInfo->glowColor[k] = nGlow ? (float)(gsum[k] / nGlow / 255.0) : 0.0f;
         pInfo->allColor[k] = nAll ? (float)(asum[k] / nAll / 255.0) : 0.0f;
+        pInfo->satColor[k] = nSat ? (float)(ssum[k] / nSat / 255.0) : 0.0f;
     }
     return pInfo;
 }
@@ -229,6 +236,23 @@ static void sithGlowLights_Build(SithWorld* pWorld)
     free(aTmp);
     sithGlowLights_numLights = n;
     stdPlatform_Printf("sithGlowLights: %d glow lights from %d surfaces\n", n, pWorld->numSurfaces);
+}
+
+int sithGlowLights_MaterialColor(rdMaterial* pMat, float* pOutRGB)
+{
+    SithWorld* pWorld = sithWorld_g_pCurrentWorld;
+    if (!pWorld || !pMat || !pOutRGB) return 0;
+    if (pWorld != sithGlowLights_pWorld) sithGlowLights_Build(pWorld);
+    sithGlowMatInfo* pInfo = sithGlowLights_MatInfo(pWorld, pMat);
+    if (!pInfo) return 0;
+    // Prefer clearly coloured texels: a saber blade is a white core with coloured edges,
+    // and averaging everything gives near-white.
+    const float* src = (pInfo->satColor[0] + pInfo->satColor[1] + pInfo->satColor[2] > 0.0f) ? pInfo->satColor
+                     : (pInfo->glowFrac >= 0.05f) ? pInfo->glowColor : pInfo->allColor;
+    if (src[0] + src[1] + src[2] <= 0.0f) return 0;
+    memcpy(pOutRGB, src, sizeof(float) * 3);
+    sithGlowLights_Normalise(pOutRGB);
+    return 1;
 }
 
 int sithGlowLights_Count(void)

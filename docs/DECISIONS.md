@@ -438,3 +438,5 @@ Not converted: `wm`/`w2` (human women civilians on Nar Shaddaa; no Academy match
 **Install**: `scripts/install_cast.sh [names]` copies converted models into gamedata/jk1/3do as loose overrides; `--remove` restores the 1997 cast; `DATA=gamedata/capture` targets the capture folder.
 
 **Open**: art direction choices for Dom (Academy officers wear grey, JK's khaki; JK commandos wear helmets; the Ugnaught match is loose); animations other than idle/run not yet checked on the new cast; material pass (shine) pending Texture God.
+
+**Animation check (Kyle).** Captured with the 1997 KEY files played on the player at a locked 60 fps (`CAPTURE_KEY`, `r_fpslimit=60`), original vs converted: crouch (kycrchgn), fire (kyfire), jump (kyjump), punch (kypnchr0), saber swing (kysabrf1). Same poses, no tearing at shoulders, elbows, hips or knees (docs/screenshots/stage4-kyle-animations.jpg). Deaths not judged yet (the body falls out of the third-person camera). The converted cast is installed in gamedata/jk1/3do for Dom's play sessions (`scripts/install_cast.sh --remove` to undo).

@@ -83,6 +83,7 @@ That breaks down into concrete engine work:
 - [x] Fit Jedi Academy's Kyle onto JK's skeleton (tools/blender/ja_to_jk.py): in game, driven by the original animations
 - [x] Stormtrooper from Jedi Academy (keeps JK's own rifle as a rigid part)
 - [x] The cast from Jedi Academy: officers, commandos, Grans, Rodians, Trandoshans, Ugnaughts (18 JK models)
+- [x] Animation check: crouch, fire, jump, punch and saber swing drive the new Kyle cleanly
 - [ ] Named characters (Jerec and the Dark Jedi, Jan) and civilians
 - [ ] Material pass on the converted characters (Texture God)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him

@@ -1468,27 +1468,31 @@ void std3D_ClearCutsceneFrame(void)
     std3D_cutsceneTexW = std3D_cutsceneTexH = 0;
 }
 
-// Draws the HD frame fitted to the original video's box (x, y, w, h in window pixels),
-// keeping the HD file's own aspect ratio, centred.
+// Draws the HD frame into the original video's box (x, y, w, h in window pixels). If the HD
+// file's shape differs from the original's (e.g. Topaz fitting 640x300 into 1920x1080 with black
+// bars), the picture was fitted inside the frame, so the centre is cropped back to the original
+// shape and the bars disappear.
 static void std3D_DrawCutsceneHD(float x, float y, float w, float h)
 {
-    float aspect = (float)std3D_cutsceneTexW / (float)std3D_cutsceneTexH;
-    float dw = w, dh = w / aspect;
-    if (dh > h + 0.5f && h > 0) {
-        // Taller than the original box: let it grow downwards to the window, then shrink to fit.
-        float maxH = (float)Window_ySize - y;
-        if (dh > maxH) { dh = maxH; dw = dh * aspect; }
+    float srcAspect = (float)std3D_cutsceneTexW / (float)std3D_cutsceneTexH;
+    float boxAspect = w / h;
+    float u0 = 0, u1 = 1, v0 = 0, v1 = 1;
+    if (srcAspect < boxAspect * 0.99f) {        // taller than the original: bars top and bottom
+        float keep = srcAspect / boxAspect;
+        v0 = (1.0f - keep) * 0.5f; v1 = 1.0f - v0;
     }
-    float dx = x + (w - dw) * 0.5f;
-    float dy = y + (h - dh) * 0.5f;
-    if (dy < 0) dy = 0;
+    else if (srcAspect > boxAspect * 1.01f) {   // wider: bars left and right
+        float keep = boxAspect / srcAspect;
+        u0 = (1.0f - keep) * 0.5f; u1 = 1.0f - u0;
+    }
+    float dx = x, dy = y, dw = w, dh = h;
 
     D3DVERTEX v[4];
     memset(v, 0, sizeof(v));
-    v[0].x = dx;      v[0].y = dy;      v[0].tu = 0; v[0].tv = 0;
-    v[1].x = dx;      v[1].y = dy + dh; v[1].tu = 0; v[1].tv = 1;
-    v[2].x = dx + dw; v[2].y = dy + dh; v[2].tu = 1; v[2].tv = 1;
-    v[3].x = dx + dw; v[3].y = dy;      v[3].tu = 1; v[3].tv = 0;
+    v[0].x = dx;      v[0].y = dy;      v[0].tu = u0; v[0].tv = v0;
+    v[1].x = dx;      v[1].y = dy + dh; v[1].tu = u0; v[1].tv = v1;
+    v[2].x = dx + dw; v[2].y = dy + dh; v[2].tu = u1; v[2].tv = v1;
+    v[3].x = dx + dw; v[3].y = dy;      v[3].tu = u1; v[3].tv = v0;
     for (int i = 0; i < 4; i++) v[i].color = 0xFFFFFFFF;
     GLushort idx[6] = { 1, 0, 2, 0, 3, 2 };
 

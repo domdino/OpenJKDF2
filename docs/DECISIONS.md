@@ -334,7 +334,7 @@ Dom: reflections in the hangar smeared diagonally off the wall light strips ("su
 **Playback design.** The SMK still plays as before and stays the master clock, the audio and the subtitle source. If `hdvideo/<NAME>.mov|mp4|m4v` exists in the game folder (run.sh links it to `hd/video`), its picture replaces the SMK's. The HD frame is chosen by time: SMK frame index x 66.66 ms, plus wall-clock time since that frame (capped at one frame), so higher frame rates play smoothly. So:
 - resolution, frame rate and codec are free (H.264, HEVC, ProRes; anything AVFoundation reads);
 - the HD file must keep the original's length. Interpolate to 23.976 fps, don't conform/retime;
-- aspect: drawn at the original's width, centred on the original picture area; a taller frame grows downwards, then shrinks to fit;
+- aspect: always drawn into the original picture area. If the HD file's shape differs (Topaz fits 640x300 into 1920x1080 by adding 90 px bars top and bottom), the centre is cropped back to 2.13:1, so the bars vanish. Verified with a letterboxed 1080p test file: picture lands exactly on the original area;
 - audio still comes from the SMK. An HD audio track is ignored for now (could be added if the audio gets remastered);
 - `r_hdCutscenes 0` turns it off for A/B.
 
@@ -345,3 +345,5 @@ Rejected: FFmpeg libraries (big dependency, licensing, nothing gained on a Mac);
 **Test**: the capture tool can now shoot cutscenes (`CAPTURE_VIDEO='./Resource/VIDEO/03-04A.SMK'`, plus `CAPTURE_HDVIDEO=<folder>`); the engine's capture timer now also runs during cutscene frames. A 1920x900 HEVC 23.976 fps test file (black and white with a red box, `hd/video_test`) replaced 03-04A in place, with frame rate unchanged (63 fps menu-capped either way). docs/screenshots/stage5-hd-cutscene-test.png.
 
 Not yet checked: playing a full cutscene with sound end to end in a real session, and pausing (the HD frame holds; resumes with the SMK).
+
+**Importing renders: `python3 tools/import_cutscenes.py [folder]`** (default hd/video_src). Finds renders named `<NAME>_<anything>.mp4|mov|m4v` (Topaz writes e.g. `01-02A_chf3_prob4.mp4` next to its source), skips ones still rendering (Topaz temp names `NAME_<digits>.mp4`, or modified in the last 30 s), checks each opens and matches the original's length within 0.5 s, then hard-links the newest into `hd/video/<NAME>.<ext>`. Re-run it any time; it replaces older imports.

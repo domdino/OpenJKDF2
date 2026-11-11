@@ -234,3 +234,11 @@ Both off by default, both need `r_perPixelLighting 1` (they read the depth targe
 **Result** (docs/screenshots/stage2-haze-shafts-off-on.png, left off, right on): hangar gets a hazy glow around the shuttle and soft light spilling from the wall strips; the Sarris rooftop's sky and far building sit back in hazy air. Subtle, which suits defaults. No measurable frame cost at 1280x960. Note: the two Sarris shots aren't framed identically (that level's start view shifted between runs).
 
 **Not yet**: shafts don't check occlusion (depth target is bound but unused), and there's no sky-sourced shaft (the Sarris storm or a skylight) since the sky isn't a glow light. Both are natural next steps if the look calls for stronger rays.
+
+## 2026-11-11 - One-switch remaster preset
+
+Console command `remaster 1` turns on the whole Stage 2 look with tuned values; `remaster 0` returns to the original game; `remaster` on its own reports what's on. It sets the individual cvars (so anything can still be fine-tuned afterwards) and saves the player profile. Capture runs accept `remaster=1`.
+
+Preset values (in `jkPlayer_aRemasterPreset`, jkPlayer.c): per-pixel lighting on (specular 1, wetness 0.6), reflections on (strength 1), haze on (density 0.08, strength 1), light shafts on (strength 1), grade on with grade/default.cube (the grimy starter), bloom on, SSAO on. Glow lights stay off (experimental). `remaster 0` switches those features off; strengths and the LUT path are left at their defaults.
+
+Result: docs/screenshots/stage2-remaster-preset-off-on.png (top original, bottom preset). Frame rate the same either way at 1280x960 (~147 fps in that run). The 1997 textures are now the most obvious gap; Boc's saber pools may be a touch hot and are the first thing to judge in a playtest.

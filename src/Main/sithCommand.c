@@ -1,4 +1,5 @@
 #include "sithCommand.h"
+#include "World/jkPlayer.h"
 
 #include "stdPlatform.h" // Added: *_ALLOC/*_FREE macros
 
@@ -35,6 +36,27 @@ sithCommandBind* sithCommand_pBinds;
 static char sithCommand_aIdk[4]; // TODO symbols?
 
 #ifdef QOL_IMPROVEMENTS
+// Added (remaster): "remaster 1" turns on the whole remastered look with tuned values,
+// "remaster 0" goes back to the original game, "remaster" shows what's on.
+int sithCommand_CmdRemaster(stdDebugConsoleCmd *pCmd, const char *pArgStr)
+{
+    char msg[160];
+    if (pArgStr && pArgStr[0]) {
+        int bOn = !(!__strcmpi(pArgStr, "0") || !__strcmpi(pArgStr, "off"));
+        int n = jkPlayer_ApplyRemasterPreset(bOn);
+        snprintf(msg, sizeof(msg), "Remaster look %s (%d settings).", bOn ? "on" : "off, original game", n);
+        sithConsole_PrintString(msg);
+        if (jkPlayer_bHasLoadedSettingsOnce)
+            jkPlayer_WriteConf(jkPlayer_playerShortName);
+        return 1;
+    }
+    snprintf(msg, sizeof(msg), "Remaster: lighting %d, reflections %d, haze %d, shafts %d, grade %d, bloom %d, ssao %d. Use remaster 1 / remaster 0.",
+             jkPlayer_bPerPixelLighting, jkPlayer_bReflections, jkPlayer_bHaze, jkPlayer_bLightShafts,
+             jkPlayer_enableGrade, jkPlayer_enableBloom, jkPlayer_enableSSAO);
+    sithConsole_PrintString(msg);
+    return 1;
+}
+
 int sithCommand_CmdQuit(stdDebugConsoleCmd *pCmd, const char *pArgStr)
 {
     // TODO disconnect clients?
@@ -86,6 +108,7 @@ void sithCommand_Startup()
 #ifdef QOL_IMPROVEMENTS
     sithConsole_RegisterCommand(sithCommand_CmdQuit, "quit", 0);
     sithConsole_RegisterCommand(sithCommand_CmdQuit, "q", 0);
+    sithConsole_RegisterCommand(sithCommand_CmdRemaster, "remaster", 0); // Added (remaster)
     sithConsole_RegisterCommand(sithCommand_CmdThingNpc, "npc", 0);
     sithConsole_RegisterCommand(sithCommand_CmdThingNpc, "thing", 0);
     sithConsole_RegisterCommand(sithCommand_CmdBind, "bind", 0);

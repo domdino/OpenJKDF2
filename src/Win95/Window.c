@@ -1451,6 +1451,8 @@ void Window_DevCaptureApplySettings(void)
             Window_SetHiDpi(atoi(pVal));
         else if (!strcmp(pTok, "fullscreen"))
             Window_SetFullscreen(atoi(pVal));
+        else if (!strcmp(pTok, "remaster"))
+            jkPlayer_ApplyRemasterPreset(atoi(pVal)); // Added (remaster): the one-switch look
         else
             ok = sithCvar_SetFromString(pTok, pVal);
         printf("CAPTURE: setting %s=%s%s\n", pTok, pVal, ok ? "" : " (unknown or read-only, ignored)");

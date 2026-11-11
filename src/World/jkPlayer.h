@@ -164,6 +164,14 @@ extern flex_t jkPlayer_hazeDensity;
 extern flex_t jkPlayer_hazeStrength;
 extern int jkPlayer_bLightShafts;
 extern flex_t jkPlayer_shaftStrength;
+
+// Added (remaster): one switch for the whole remastered look. 1 = tuned defaults for every
+// remaster feature (per-pixel light, reflections, haze, shafts, grade, bloom, SSAO);
+// 0 = everything back to the original game. Sets the individual cvars, so each can still
+// be fine-tuned afterwards. Returns the number of settings applied.
+int jkPlayer_ApplyRemasterPreset(int bOn);
+// 1 if every preset feature is currently on.
+int jkPlayer_IsRemasterPresetOn(void);
 extern int jkPlayer_enableSSAO;
 extern flex_t jkPlayer_gamma;
 extern flex_t jkPlayer_hudScale;

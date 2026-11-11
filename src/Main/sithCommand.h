@@ -40,6 +40,7 @@ int sithCommand_CompareMatInfos(const void *a, const void *b);
 int sithCommand_Coords(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int sithCommand_Fly(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int sithCommand_Warp(stdDebugConsoleCmd *pCmd, const char *pArgStr);
+int sithCommand_CmdRemaster(stdDebugConsoleCmd *pCmd, const char *pArgStr); // Added (remaster)
 int sithCommand_Activate(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int sithCommand_Jump(stdDebugConsoleCmd *pCmd, const char *pArgStr);
 int sithCommand_Players(stdDebugConsoleCmd *pCmd, const char *pArgStr);

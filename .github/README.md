@@ -57,8 +57,13 @@ That breaks down into concrete engine work:
 - [x] Screen-space reflections for wet, reflective floors (being playtested)
 - [x] Coloured light from sabers, including enemy sabers
 - [x] Haze and light shafts (being playtested)
+- [x] One-switch preset: `remaster 1` in the console
 
 ## Latest
+
+The whole Stage 2 look behind one switch: open the console (backtick) and type `remaster 1` (`remaster 0` for the original). Top: original game. Bottom: remaster preset (per-pixel light with wet highlights, coloured saber light, reflections, haze, light shafts, grade, bloom, ambient occlusion).
+
+![Original vs remaster preset](../docs/screenshots/stage2-remaster-preset-off-on.png)
 
 Haze and light shafts, first pass (left off, right on): the hangar gets a hazy glow around the shuttle and light spilling from the wall strips; the rooftop's sky and far building sit back in hazy air.
 
@@ -93,7 +98,7 @@ Extract your own copy of the game into `gamedata/jk1/`. For the GOG installer: `
 scripts/run.sh
 ```
 
-Colour grades live in `grade/`. Turn grading on in the engine's settings (`r_enableGrade 1`), and the game reloads `grade/default.cube` live whenever it changes.
+To see the remastered look, open the console in game (backtick) and type `remaster 1`. Colour grades live in `grade/`; the game reloads `grade/default.cube` live whenever it changes.
 
 ## Credits and legal
 

@@ -261,6 +261,46 @@ void jkPlayer_StartupVars()
 #endif
 }
 
+// Added (remaster): see jkPlayer.h. Values here are the tuned defaults; change them as the
+// look gets dialled in.
+typedef struct { const char* pName; const char* pOn; const char* pOff; } jkPlayerPresetEntry;
+static const jkPlayerPresetEntry jkPlayer_aRemasterPreset[] = {
+    {"r_perPixelLighting",   "1",   "0"},
+    {"r_specular",           "1",   "1"},
+    {"r_wetness",            "0.6", "0.6"},
+    {"r_glowLights",         "0",   "0"},   // experimental, reads as blobs
+    {"r_reflections",        "1",   "0"},
+    {"r_reflectionStrength", "1",   "1"},
+    {"r_haze",               "1",   "0"},
+    {"r_hazeDensity",        "0.08","0.08"},
+    {"r_hazeStrength",       "1",   "1"},
+    {"r_lightShafts",        "1",   "0"},
+    {"r_shaftStrength",      "1",   "1"},
+    {"r_enableGrade",        "1",   "0"},
+    {"r_gradeLut",           "grade/default.cube", "grade/default.cube"},
+    {"r_gradeStrength",      "1",   "1"},
+    {"r_gradeToneCurve",     "1",   "1"},
+    {"r_gradeExposure",      "1",   "1"},
+    {"r_enableBloom",        "1",   "0"},
+    {"r_enableSSAO",         "1",   "0"},
+};
+
+int jkPlayer_ApplyRemasterPreset(int bOn)
+{
+    int n = 0;
+    for (size_t i = 0; i < sizeof(jkPlayer_aRemasterPreset) / sizeof(jkPlayer_aRemasterPreset[0]); i++) {
+        const jkPlayerPresetEntry* e = &jkPlayer_aRemasterPreset[i];
+        if (sithCvar_SetFromString(e->pName, bOn ? e->pOn : e->pOff)) n++;
+    }
+    return n;
+}
+
+int jkPlayer_IsRemasterPresetOn(void)
+{
+    return jkPlayer_bPerPixelLighting && jkPlayer_bReflections && jkPlayer_bHaze && jkPlayer_bLightShafts
+        && jkPlayer_enableGrade && jkPlayer_enableBloom && jkPlayer_enableSSAO;
+}
+
 // Added: Clean reset
 void jkPlayer_ResetVars()
 {

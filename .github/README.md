@@ -34,7 +34,10 @@ Built on [OpenJKDF2](https://github.com/shinyquagsire23/OpenJKDF2), the communit
 - [x] Mipmaps and anisotropic filtering for true-colour textures (visible once HD textures land in Stage 3)
 - [x] Colour grading: exposure, highlight roll-off and live-reloading .cube LUTs (`grade/`)
 - [x] Measure the cost of bloom, SSAO and SSAA (all cheap at Retina window size: 130+ fps with everything on)
-- [ ] Per-pixel lighting with normal and specular map support (plan first)
+- [x] Art direction chosen: north star 2 (dark, wet, grimy); grimy starter grade
+- [ ] Per-pixel lighting with specular highlights (plan written: docs/stage2-lighting-plan.md, waiting for sign-off)
+- [ ] Highlights from glowing surfaces (skylights, grates) for the wet look
+- [ ] Haze and light shafts
 
 ## Where it started
 

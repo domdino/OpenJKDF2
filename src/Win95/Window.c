@@ -1663,10 +1663,10 @@ void Window_RecreateSDL2Window()
     flags = SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
 
-    // Added (remaster): capture runs never show a window; rendering goes to an
-    // offscreen framebuffer instead (see std3D init_resources).
+    // Added (remaster): capture runs use a borderless window parked far off-screen.
+    // (A hidden window gets no drawable on macOS, so nothing renders at all.)
     if (Window_IsDevCapture())
-        flags |= SDL_WINDOW_HIDDEN;
+        flags |= SDL_WINDOW_BORDERLESS;
 
     // SDL3 SDL_CreateWindow() dropped the x/y position params; position is set
     // separately below via SDL_SetWindowPosition() on desktop.
@@ -1686,7 +1686,15 @@ void Window_RecreateSDL2Window()
     //SDL_SetRenderDrawBlendMode(displayRenderer, SDL_BLENDMODE_BLEND);
 
 #if !defined(ARCH_WASM) && !defined(TARGET_ANDROID) && !defined(TARGET_IOS)
-    SDL_SetWindowPosition(displayWindow, Window_xPos, Window_yPos);
+    if (Window_IsDevCapture()) {
+        SDL_SetWindowPosition(displayWindow, -30000, -30000); // Added (remaster): out of sight
+        int px = 0, py = 0;
+        SDL_GetWindowPosition(displayWindow, &px, &py);
+        stdPlatform_Printf("CAPTURE: window parked at %d,%d\n", px, py);
+    }
+    else {
+        SDL_SetWindowPosition(displayWindow, Window_xPos, Window_yPos);
+    }
 #endif
 
     if (!Window_IsDevCapture()) { // Added (remaster): capture runs stay hidden and unfocused

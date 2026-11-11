@@ -21,7 +21,7 @@ in vec2 f_uv;
 in vec3 f_coord;
 out vec4 fragColor;
 
-const int SAMPLES = 32;
+const int SAMPLES = 16; // was 32; the jitter hides the coarser steps
 
 void main(void)
 {
@@ -30,6 +30,9 @@ void main(void)
     {
         vec2 toLight = u_shaftPos[i].xy - f_uv;
         float dist = length(toLight);
+        // Rays fade with distance; skip lights too far away to contribute.
+        float falloff = exp(-dist * 2.5);
+        if (falloff * u_shaftPos[i].z < 0.02) continue;
         vec2 stepUV = toLight * (0.9 / float(SAMPLES));
         // Per-pixel jitter of the start point turns the 32-step banding into fine noise.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
@@ -42,11 +45,9 @@ void main(void)
             float glow = dot(texture(tex, uv).rgb, vec3(0.2126, 0.7152, 0.0722));
             float bright = max(dot(texture(tex3, uv).rgb, vec3(0.2126, 0.7152, 0.0722)) - 0.7, 0.0) * 2.0;
             accum += (glow + bright) * decay;
-            decay *= 0.95;
+            decay *= 0.91; // stronger per step, to cover the same distance in 16 steps
         }
         accum /= float(SAMPLES);
-        // Rays fade with distance from their source.
-        float falloff = exp(-dist * 2.5);
         total += u_shaftCol[i].rgb * accum * falloff * u_shaftPos[i].z;
     }
     fragColor = vec4(total * param1 * 1.5, 0.0);

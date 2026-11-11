@@ -287,3 +287,15 @@ Rock gets the same gloss as metal: `r_wetness` is one global value, because the 
 **Result.** Sarris view: my tool reproduces the engine hash for 292/292 textures (was 103), and 61 textures load HD replacements (was 0). Boc's room: 84 HD textures. Hangar and Sarris still show no wrong textures. docs/screenshots/stage3-hd-hashfix-off-on.png (the Boc pair isn't comparable: the boss script advanced to a different framing with HD on).
 
 **Performance problem found.** Boc's room with HD textures plus the full remaster look: ~33-40 fps at 1280x960 (vs 112 with HD but no remaster, ~120 with remaster but no HD). Bisect, one effect off at a time: bloom off 61, per-pixel lighting off 53, haze off 47, reflections off 46, SSAO off 42, shafts off 40. Cumulative, not one culprit: heavier main pass with HD (more texture bandwidth, 16x anisotropic) plus every full-screen pass. Next: half-res bloom first level and reflections, lower anisotropy, GPU profile in Xcode, then re-measure at full-screen Retina (about 5x these pixels).
+
+## 2026-11-11 - Performance pass 1 (HD textures + full remaster look)
+
+Changes, none of which change the look (checked in the hangar; Sarris differs only by its unstable start camera):
+- Bloom's first blur at half resolution (was full: the blur shader takes 49 samples per pixel). Radius halved to match.
+- Scene colour texture capped at 2 mip levels. The haze pass rebuilds its mips every frame, and the default meant a full chain of the whole scene each time.
+- Haze blurs use 8 directions x 2 rings (17 samples, was 49): haze colour is very soft anyway.
+- Light shafts: 16 steps (was 32) with stronger per-step decay to cover the same distance, and lights too far from a pixel to contribute are skipped. This was the heaviest pass: up to 4 lights x 32 steps x 2 texture reads per pixel.
+- Reflections: 32 marching steps with faster growth (was 48) and a 4-step refine (was 6).
+- `r_anisotropy` (default 8, range 1-16) caps anisotropic filtering, which was 16x.
+
+**Not measured yet.** During this work a Texture God FLUX job was running on the GPU (another session), so timings were meaningless (the hangar read 27-31 fps against 175 earlier with the same settings). Re-measure the Boc room, hangar and Sarris with the GPU idle before deciding on pass 2 (half-res reflections, GPU profile in Xcode, full-screen Retina numbers). Rule for later: don't benchmark while Texture God is running.

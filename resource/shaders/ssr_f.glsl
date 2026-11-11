@@ -71,11 +71,11 @@ void main(void)
     vec3 Q = P + N * 0.002;
     vec3 prevQ = Q;
     vec2 hitUV = vec2(-1.0);
-    for (int i = 0; i < 48; i++)
+    for (int i = 0; i < 32; i++) // was 48; steps grow faster to cover the same distance
     {
         prevQ = Q;
         Q += R * stepLen;
-        stepLen *= 1.1;
+        stepLen *= 1.15;
         if (Q.y <= 0.001) break;
         vec2 uv = projectUV(Q);
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
@@ -86,7 +86,7 @@ void main(void)
         if (behind > 0.0 && behind < max(0.02, stepLen * 2.0))
         {
             vec3 a = prevQ, b = Q;
-            for (int j = 0; j < 6; j++)
+            for (int j = 0; j < 4; j++)
             {
                 vec3 m = (a + b) * 0.5;
                 vec2 muv = projectUV(m);

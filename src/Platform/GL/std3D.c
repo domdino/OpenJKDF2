@@ -317,6 +317,10 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // Added (remaster): cap the mip chain. The haze pass builds mips of this every frame and
+    // the default (up to level 1000) meant a full chain of the whole scene each time.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 2);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     
@@ -400,7 +404,9 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
     if (jkPlayer_enableBloom)
     {
         pFb->enable_extra |= 1;
-        std3D_generateIntermediateFbo(width, height, &pFb->blur1, 1);
+        // Added (remaster): first bloom blur at half resolution (was full: 49 samples per
+        // pixel every frame). The later levels are quarter-steps of this, as before.
+        std3D_generateIntermediateFbo(width / 2, height / 2, &pFb->blur1, 1);
         //std3D_generateIntermediateFbo(width, height, &pFb->blurBlend, 1);
         std3D_generateIntermediateFbo(pFb->blur1.w/4, pFb->blur1.h/4, &pFb->blur2, 1);
         std3D_generateIntermediateFbo(pFb->blur2.w/4, pFb->blur2.h/4, &pFb->blur3, 1);
@@ -815,6 +821,9 @@ void std3D_SetTrueColorFiltering(int bFilter, int bGenMips)
         maxAniso = (glGetError() == GL_NO_ERROR && v > 1.0f) ? (v > 16.0f ? 16.0f : v) : 1.0f;
         stdPlatform_Printf("std3D: anisotropic filtering max %.0fx\n", maxAniso);
     }
+    // r_anisotropy (default 8) caps it: 16x cost real time with HD textures for little gain.
+    float aniso = maxAniso;
+    if (jkPlayer_anisotropy >= 1 && jkPlayer_anisotropy < aniso) aniso = (float)jkPlayer_anisotropy;
 
     if (bGenMips) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
@@ -825,7 +834,7 @@ void std3D_SetTrueColorFiltering(int bFilter, int bGenMips)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, bFilter ? GL_LINEAR : GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, bFilter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
     if (maxAniso > 1.0f)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, bFilter ? maxAniso : 1.0f);
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, bFilter ? aniso : 1.0f);
 }
 
 int std3D_Startup()
@@ -2786,8 +2795,9 @@ void std3D_DrawSceneFbo()
     if (jkPlayer_bHaze && std3D_AtmosphereActive() && (std3D_pFb->enable_extra & 8) && std3D_hazeStage.program)
     {
         glDisable(GL_BLEND);
-        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur1, std3D_pFb->tex0, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
-        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur2, std3D_pFb->hazeBlur1.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
+        // 8 directions x 2 rings = 17 samples (was 49): haze colour is very soft anyway.
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur1, std3D_pFb->tex0, 0, 0, 8.0, 2.0, 2.0 * rad_scale, 1);
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur2, std3D_pFb->hazeBlur1.tex, 0, 0, 8.0, 2.0, 2.0 * rad_scale, 1);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         std3D_DrawSimpleTex(&std3D_hazeStage, pOut, std3D_pFb->hazeBlur2.tex, std3D_pFb->tex4, 0,
@@ -2839,7 +2849,7 @@ void std3D_DrawSceneFbo()
     {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur1, std3D_pFb->tex1, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur1, std3D_pFb->tex1, 0, 0, 16.0, 3.0, 1.0 * rad_scale, 1); // Added (remaster): half-res target, so half the radius keeps the same look
         std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur2, std3D_pFb->blur1.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
         std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur3, std3D_pFb->blur2.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
         std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur4, std3D_pFb->blur3.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);

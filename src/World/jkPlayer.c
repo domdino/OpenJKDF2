@@ -77,6 +77,7 @@ flex_t jkPlayer_hazeDensity = 0.08;                         // Added (remaster):
 flex_t jkPlayer_hazeStrength = 1.0;                         // Added (remaster)
 int jkPlayer_bLightShafts = 0;                              // Added (remaster)
 flex_t jkPlayer_shaftStrength = 1.0;                        // Added (remaster)
+int jkPlayer_anisotropy = 8;                                // Added (remaster): 1-16
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -227,6 +228,8 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_hazeStrength",             1.0,                        &jkPlayer_hazeStrength,             CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_lightShafts",              0,                          &jkPlayer_bLightShafts,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_shaftStrength",            1.0,                        &jkPlayer_shaftStrength,            CVARFLAG_LOCAL);
+    // Anisotropic filtering level for HD textures (needs texture filtering on). 1-16.
+    sithCvar_RegisterInt("r_anisotropy",                8,                          &jkPlayer_anisotropy,               CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -332,6 +335,7 @@ void jkPlayer_ResetVars()
     jkPlayer_hazeStrength = 1.0;
     jkPlayer_bLightShafts = 0;
     jkPlayer_shaftStrength = 1.0;
+    jkPlayer_anisotropy = 8;
     jkPlayer_gamma = 1.0;
     jkPlayer_bEnableJkgm = 1;
     jkPlayer_bEnableTexturePrecache = 1;
@@ -694,6 +698,7 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveFloat(ext_fpath, "hazestrength", jkPlayer_hazeStrength);
         stdJSON_SaveBool(ext_fpath, "lightshafts", jkPlayer_bLightShafts);
         stdJSON_SaveFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
+        stdJSON_SaveInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -915,6 +920,7 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_hazeStrength = stdJSON_GetFloat(ext_fpath, "hazestrength", jkPlayer_hazeStrength);
         jkPlayer_bLightShafts = stdJSON_GetBool(ext_fpath, "lightshafts", jkPlayer_bLightShafts);
         jkPlayer_shaftStrength = stdJSON_GetFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
+        jkPlayer_anisotropy = stdJSON_GetInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

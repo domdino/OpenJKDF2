@@ -62,17 +62,20 @@ def grimy(r, g, b):
     """Starter look for north star 2: dark, desaturated, warm-brown, dense blacks."""
     clamp = lambda x: min(max(x, 0.0), 1.0)
 
-    # Crush the toe and add contrast: blacks get denser, highlights stay open.
+    # Firm blacks and gentle contrast, without crushing: JK is already a dark game, so
+    # only the very bottom gets denser and the mids stay readable. (The first version
+    # pulled the whole low end down and lost most of the detail.)
     def curve(x):
         x = clamp(x)
-        toe = x * x * (1.6 - 0.6 * x)            # darker shadows and low mids
-        return clamp(toe + 0.10 * (x - 0.5) * (1.0 - abs(2.0 * x - 1.0)))
+        toe = x * x * (1.6 - 0.6 * x)
+        shaped = x + (toe - x) * 0.3             # 30% of the toe crush
+        return clamp(shaped + 0.08 * (x - 0.5) * (1.0 - abs(2.0 * x - 1.0)))
 
     r, g, b = curve(r), curve(g), curve(b)
 
-    # Heavy desaturation.
+    # Desaturation, lighter than before so materials still read.
     luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
-    sat = 0.6
+    sat = 0.7
     r = luma + (r - luma) * sat
     g = luma + (g - luma) * sat
     b = luma + (b - luma) * sat

@@ -142,3 +142,4 @@ Dom picked north star 2: dark, wet, grimy, atmospheric. What that sets:
 - Materials (Stage 3): low-roughness, wet-looking grime, so roughness/specular maps matter as much as colour.
 - Per-pixel lighting must support strong, sharp specular highlights.
 - Haze and light shafts from bright sources (skylights, windows) are worth building. Lens streaks: maybe, subtly.
+- Grimy grade v2: the first version crushed the low end on top of an already dark game (average brightness 0.055 vs 0.158 ungraded) and Dom couldn't see anything. v2 keeps only 30% of the toe crush and desaturates to 0.7 instead of 0.6: average 0.135, moody but readable. Lesson: the darkness in north star 2 comes from lighting contrast (pools of light against dark), not from crushing the whole image. docs/screenshots/stage2-grimy-grade-test.png now shows original | v1 | v2.

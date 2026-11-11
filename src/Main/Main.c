@@ -171,6 +171,10 @@ int Main_StartupDedicated(int bFullyDedicated)
         jkPlayer_playerShortName[31] = 0;
         jkPlayer_CreateConf(jkPlayer_playerShortName);
     }
+
+#ifdef SDL2_RENDER
+    Window_DevCaptureApplySettings(); // Added (remaster): no-op unless OPENJKDF2_CAPTURE is set
+#endif
     
 
     // Dedicated player has no control at all

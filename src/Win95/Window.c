@@ -1,5 +1,12 @@
 #include "Window.h"
 
+#include <stdlib.h>
+#include "General/stdString.h"
+#include "World/sithWorld.h"
+#include "Main/sithCommand.h"
+#include "Main/sithCvar.h"
+#include "Primitives/rdMatrix.h"
+
 #include "Win95/stdGdi.h"
 #include "Platform/std3D.h"
 #include "Main/Main.h"
@@ -1396,6 +1403,135 @@ void Window_SdlUpdateModal()
     Window_bInSdlUpdate = saved;
 }
 
+// Added (remaster): scripted capture for before/after comparisons and effect costs.
+// OPENJKDF2_CAPTURE=<png path> turns it on. After OPENJKDF2_CAPTURE_DELAY seconds in game
+// (default 8), frame times are measured over OPENJKDF2_CAPTURE_FRAMES frames (default 600),
+// a screenshot is written, a "CAPTURE:" stats line is printed and the game quits.
+// For repeatable shots the AI is switched off and the player made invulnerable, and
+// OPENJKDF2_CAPTURE_WARP="x y z pitch yaw roll" places the camera (same format as the
+// WARP console command). The stats line includes the final position for reuse.
+// Autostart builds a fresh default player profile and never reads saved settings,
+// so capture runs pass their display settings here instead, after the profile exists.
+// OPENJKDF2_CAPTURE_CVARS="r_enableBloom=1 r_ssaaMultiple=2 hidpi=1 ..." (later wins).
+// "hidpi" and "fullscreen" are window flags; everything else is a regular cvar.
+void Window_DevCaptureApplySettings(void)
+{
+    if (!getenv("OPENJKDF2_CAPTURE")) return;
+
+    extern int jkGuiTitle_bSkipLoadingWait;
+    jkGuiTitle_bSkipLoadingWait = 1; // no "press a key" mission text screen
+
+    const char* pEnv = getenv("OPENJKDF2_CAPTURE_CVARS");
+    if (!pEnv) return;
+
+    char aBuf[1024];
+    stdString_SafeStrCopy(aBuf, pEnv, sizeof(aBuf));
+    for (char* pTok = strtok(aBuf, " \t\n"); pTok; pTok = strtok(NULL, " \t\n")) {
+        char* pEq = strchr(pTok, '=');
+        if (!pEq) continue;
+        *pEq = 0;
+        const char* pVal = pEq + 1;
+        int ok = 1;
+        if (!strcmp(pTok, "hidpi"))
+            Window_SetHiDpi(atoi(pVal));
+        else if (!strcmp(pTok, "fullscreen"))
+            Window_SetFullscreen(atoi(pVal));
+        else
+            ok = sithCvar_SetFromString(pTok, pVal);
+        printf("CAPTURE: setting %s=%s%s\n", pTok, pVal, ok ? "" : " (unknown or read-only, ignored)");
+    }
+    fflush(stdout);
+}
+
+static int Window_DevCaptureCompare(const void* a, const void* b)
+{
+    float fa = *(const float*)a, fb = *(const float*)b;
+    return (fa > fb) - (fa < fb);
+}
+
+static void Window_DevCaptureTick(void)
+{
+    static int state = 0; // 0 unchecked, 1 waiting, 2 timing, 3 writing, -1 off
+    static char aPath[128];
+    static uint64_t tMark, tLast;
+    static uint64_t delayNs;
+    static int nFrames, frameIdx;
+    static float* aFrameMs = NULL;
+
+    if (state < 0) return;
+    uint64_t now = SDL_GetTicksNS();
+
+    if (state == 0) {
+        const char* pEnv = getenv("OPENJKDF2_CAPTURE");
+        if (!pEnv || !pEnv[0]) { state = -1; return; }
+        stdString_SafeStrCopy(aPath, pEnv, sizeof(aPath));
+        const char* pDelay = getenv("OPENJKDF2_CAPTURE_DELAY");
+        const char* pFrames = getenv("OPENJKDF2_CAPTURE_FRAMES");
+        delayNs = (uint64_t)((pDelay ? atof(pDelay) : 8.0) * 1e9);
+        nFrames = pFrames ? atoi(pFrames) : 600;
+        if (nFrames < 1) nFrames = 1;
+        aFrameMs = (float*)malloc(sizeof(float) * nFrames);
+        if (!aFrameMs) { state = -1; return; }
+
+        // Freeze the scene: no AI events or shots, enemies don't look for the player.
+        g_debugmodeFlags |= DEBUGFLAG_NO_AIEVENTS | DEBUGFLAG_NO_AI | DEBUGFLAG_NO_AILOOK_FOR_TARGET;
+        SithThing* pPlayer = sithWorld_g_pCurrentWorld ? sithWorld_g_pCurrentWorld->pLocalPlayer : NULL;
+        if (pPlayer) {
+            pPlayer->actorParams.flags |= SITH_AF_INVULNERABLE;
+            const char* pWarp = getenv("OPENJKDF2_CAPTURE_WARP");
+            if (pWarp && pWarp[0] && !sithCommand_Warp(NULL, pWarp))
+                printf("CAPTURE: warp failed for '%s'\n", pWarp);
+        }
+        tMark = now;
+        state = 1;
+        return;
+    }
+
+    if (state == 1) {
+        if (now - tMark >= delayNs) {
+            tLast = now;
+            frameIdx = 0;
+            state = 2;
+        }
+        return;
+    }
+
+    if (state == 2) {
+        aFrameMs[frameIdx++] = (float)((now - tLast) / 1e6);
+        tLast = now;
+        if (frameIdx < nFrames) return;
+
+        std3D_Screenshot(aPath);
+
+        double sum = 0.0;
+        for (int i = 0; i < nFrames; i++) sum += aFrameMs[i];
+        qsort(aFrameMs, nFrames, sizeof(float), Window_DevCaptureCompare);
+        double avg = sum / nFrames;
+        float p50 = aFrameMs[nFrames / 2];
+        float p99 = aFrameMs[(int)(nFrames * 0.99) < nFrames ? (int)(nFrames * 0.99) : nFrames - 1];
+        rdVector3 pos = {0}, pyr = {0};
+        SithThing* pPlayerNow = sithWorld_g_pCurrentWorld ? sithWorld_g_pCurrentWorld->pLocalPlayer : NULL;
+        if (pPlayerNow) {
+            pos = pPlayerNow->position;
+            rdMatrix_ExtractAngles34(&pPlayerNow->orient, &pyr);
+        }
+        printf("CAPTURE: frames=%d avg_ms=%.3f avg_fps=%.1f p50_ms=%.3f p99_ms=%.3f max_ms=%.3f size=%dx%d warp=\"%.4f %.4f %.4f %.2f %.2f %.2f\" shot=%s\n",
+               nFrames, avg, avg > 0.0 ? 1000.0 / avg : 0.0, p50, p99, aFrameMs[nFrames - 1],
+               Window_xSize, Window_ySize, (double)pos.x, (double)pos.y, (double)pos.z,
+               (double)pyr.x, (double)pyr.y, (double)pyr.z, aPath);
+        fflush(stdout);
+        tMark = now;
+        state = 3;
+        return;
+    }
+
+    // Give the PNG writer thread time to finish, then quit without touching player settings.
+    if (state == 3 && now - tMark > 3000000000ull) {
+        fflush(stdout);
+        exit(0);
+    }
+}
+
 void Window_SdlVblank()
 {
     if (Main_bHeadless) return;
@@ -1403,6 +1539,7 @@ void Window_SdlVblank()
     //static uint32_t roundtrip = 0;
     //uint32_t before = stdPlatform_GetTimeMsec();
     jkGame_ScreenshotFlush(); // Added: F12 shots capture the finished frame
+    Window_DevCaptureTick(); // Added (remaster): scripted capture, off unless OPENJKDF2_CAPTURE is set
 #ifdef ARCH_WASM
     if (!jkGuiBuildMulti_bRendering)
 #endif

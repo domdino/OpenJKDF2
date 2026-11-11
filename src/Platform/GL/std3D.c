@@ -132,7 +132,7 @@ static GLint uniform_ssrWrite = -1, uniform_pplUpCam = -1;
 // the last world draw of the frame.
 std3DSimpleTexStage std3D_ssrStage;
 static GLint std3D_ssrUniformProj = -1, std3D_ssrUniformScreen = -1, std3D_ssrUniformUpCam = -1;
-static GLint std3D_ssrUniformWetness = -1, std3D_ssrUniformStrength = -1;
+static GLint std3D_ssrUniformWetness = -1, std3D_ssrUniformStrength = -1, std3D_ssrUniformRoughness = -1;
 static float std3D_ssrProj[4], std3D_ssrScreen[4], std3D_ssrUpCam[3];
 static int std3D_ssrHaveCamera = 0;
 // Added (remaster): atmosphere passes, and the glow lights of the current frame (camera
@@ -429,8 +429,9 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
         std3D_generateIntermediateFbo(Window_xSize, Window_ySize, &pFb->grade, 1);
     }
 
-    // Added (remaster): low-res blurred copies of the scene; their colour lights the haze.
-    if (jkPlayer_bHaze)
+    // Added (remaster): low-res blurred copies of the scene. They light the haze and give
+    // rough (glossy) reflections something blurry to reflect.
+    if (jkPlayer_bHaze || jkPlayer_bReflections)
     {
         pFb->enable_extra |= 8;
         std3D_generateIntermediateFbo(width / 4, height / 4, &pFb->hazeBlur1, 1);
@@ -605,6 +606,7 @@ int init_resources()
     std3D_ssrUniformUpCam = std3D_tryFindUniform(std3D_ssrStage.program, "u_upCam");
     std3D_ssrUniformWetness = std3D_tryFindUniform(std3D_ssrStage.program, "u_wetness");
     std3D_ssrUniformStrength = std3D_tryFindUniform(std3D_ssrStage.program, "u_strength");
+    std3D_ssrUniformRoughness = std3D_tryFindUniform(std3D_ssrStage.program, "u_roughness");
     // Added (remaster): atmosphere
     if (!std3D_loadSimpleTexProgram("shaders/haze", &std3D_hazeStage)) return false;
     if (!std3D_loadSimpleTexProgram("shaders/shafts", &std3D_shaftStage)) return false;
@@ -962,7 +964,7 @@ int std3D_StartScene()
         || (!(std3D_pFb->enable_extra & 1) && jkPlayer_enableBloom)
         || (!(std3D_pFb->enable_extra & 2) && jkPlayer_enableSSAO)
         || (!!(std3D_pFb->enable_extra & 4) != !!jkPlayer_enableGrade) // Added (remaster)
-        || (!!(std3D_pFb->enable_extra & 8) != !!jkPlayer_bHaze)
+        || (!!(std3D_pFb->enable_extra & 8) != !!(jkPlayer_bHaze || jkPlayer_bReflections))
         || (jkPlayer_enableGrade && (std3D_pFb->grade.w != Window_xSize || std3D_pFb->grade.h != Window_ySize)))
     {
         std3D_deleteFramebuffer(std3D_pFb);
@@ -2777,6 +2779,17 @@ void std3D_DrawSceneFbo()
         std3D_DrawSimpleTex(&std3D_ssaoMixStage, pOut, std3D_pFb->ssaoBlur2.tex, std3D_pFb->tex0, 0, 0.0, 0.0, jkPlayer_gamma, 0);
     }
 
+    // Added (remaster): blurred copies of the scene, shared by glossy reflections and haze.
+    int bSceneBlur = (std3D_pFb->enable_extra & 8) && (std3D_AtmosphereActive() || std3D_ReflectionsActive());
+    if (bSceneBlur)
+    {
+        glDisable(GL_BLEND);
+        // 8 directions x 2 rings = 17 samples: the result is meant to be very soft.
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur1, std3D_pFb->tex0, 0, 0, 8.0, 2.0, 2.0 * rad_scale, 1);
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur2, std3D_pFb->hazeBlur1.tex, 0, 0, 8.0, 2.0, 2.0 * rad_scale, 1);
+        glEnable(GL_BLEND);
+    }
+
     // Added (remaster): screen-space reflections, added on top of the composited scene.
     if (std3D_ReflectionsActive() && std3D_ssrHaveCamera && std3D_ssrStage.program && !jkGuiBuildMulti_bRendering)
     {
@@ -2786,19 +2799,16 @@ void std3D_DrawSceneFbo()
         glUniform3fv(std3D_ssrUniformUpCam, 1, std3D_ssrUpCam);
         glUniform1f(std3D_ssrUniformWetness, jkPlayer_wetness);
         glUniform1f(std3D_ssrUniformStrength, jkPlayer_reflectionStrength);
+        glUniform1f(std3D_ssrUniformRoughness, jkPlayer_reflectionRoughness);
         glBlendFunc(GL_ONE, GL_ONE);
-        std3D_DrawSimpleTex(&std3D_ssrStage, pOut, std3D_pFb->tex0, std3D_pFb->tex4, 0, 0.0, 0.0, 0.0, 0);
+        std3D_DrawSimpleTex(&std3D_ssrStage, pOut, std3D_pFb->tex0, std3D_pFb->tex4,
+                            bSceneBlur ? std3D_pFb->hazeBlur1.tex : std3D_pFb->tex0, 0.0, 0.0, 0.0, 0);
     }
 
     // Added (remaster): haze. Distance fog from the depth target, coloured by a heavily
     // blurred copy of the scene so it glows near lights. Alpha-blended over the scene.
     if (jkPlayer_bHaze && std3D_AtmosphereActive() && (std3D_pFb->enable_extra & 8) && std3D_hazeStage.program)
     {
-        glDisable(GL_BLEND);
-        // 8 directions x 2 rings = 17 samples (was 49): haze colour is very soft anyway.
-        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur1, std3D_pFb->tex0, 0, 0, 8.0, 2.0, 2.0 * rad_scale, 1);
-        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur2, std3D_pFb->hazeBlur1.tex, 0, 0, 8.0, 2.0, 2.0 * rad_scale, 1);
-        glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         std3D_DrawSimpleTex(&std3D_hazeStage, pOut, std3D_pFb->hazeBlur2.tex, std3D_pFb->tex4, 0,
                             jkPlayer_hazeDensity, jkPlayer_hazeStrength, 0.0, 0);

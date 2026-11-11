@@ -5,6 +5,8 @@
 //   tex2 - reflection data: octahedral camera-space normal (xy), signed depth (z), alpha 1
 uniform sampler2D tex;
 uniform sampler2D tex2;
+uniform sampler2D tex3;     // blurred scene colour, for glossy (rough) reflections
+uniform float u_roughness;  // r_reflectionRoughness: 0 = mirror, 1 = very blurry
 uniform vec2 iResolution;
 uniform vec4 u_proj;       // half screen width, half screen height, focal length
 uniform vec4 u_screen;     // canvas width, canvas height, scene framebuffer width, height
@@ -63,7 +65,10 @@ void main(void)
     float floorness = smoothstep(0.55, 0.95, dot(N, u_upCam));
     float refl = clamp(u_wetness, 0.0, 1.0) * mix(0.2, 1.0, floorness);
     float fresnel = mix(0.2, 1.0, pow(1.0 - clamp(dot(-V, N), 0.0, 1.0), 4.0));
-    float amount = refl * fresnel * abs(u_strength);
+    // Roughness: floors use the base value, walls and slopes are rougher. Rough surfaces
+    // reflect a blurred scene and a bit less of it, which reads as a wet sheen, not a mirror.
+    float rough = clamp(u_roughness + (1.0 - floorness) * 0.3, 0.0, 1.0);
+    float amount = refl * fresnel * abs(u_strength) * mix(1.0, 0.6, rough);
     if (amount < 0.01) { if (dbg) fragColor = vec4(0.0, 0.5, 0.5, 0.0); return; } // cyan: amount ~0
 
     // March in camera space with growing steps, then refine the hit with a binary search.
@@ -71,8 +76,10 @@ void main(void)
     vec3 Q = P + N * 0.002;
     vec3 prevQ = Q;
     vec2 hitUV = vec2(-1.0);
+    float travel = 0.0;
     for (int i = 0; i < 32; i++) // was 48; steps grow faster to cover the same distance
     {
+        travel = float(i) / 32.0;
         prevQ = Q;
         Q += R * stepLen;
         stepLen *= 1.15;
@@ -83,7 +90,11 @@ void main(void)
         if (s.a < 0.5) continue;
         float sceneDepth = abs(s.z);
         float behind = Q.y - sceneDepth;
-        if (behind > 0.0 && behind < max(0.02, stepLen * 2.0))
+        // Tight tolerance, and only surfaces facing the ray count as hits. A ray skimming
+        // past a thin light strip used to "hit" it from behind, and every floor pixel along
+        // that line grabbed the same strip end: a diagonal smear instead of a reflection.
+        if (behind > 0.0 && behind < max(0.01, stepLen * 1.0)
+            && dot(octDecode(s.xy), R) < -0.05)
         {
             vec3 a = prevQ, b = Q;
             for (int j = 0; j < 4; j++)
@@ -104,6 +115,9 @@ void main(void)
     vec2 edge = min(hitUV, 1.0 - hitUV);
     float edgeFade = smoothstep(0.0, 0.08, min(edge.x, edge.y));
 
-    vec3 col = texture(tex, hitUV).rgb;
-    fragColor = vec4(col * amount * edgeFade, 0.0);
+    // Long rays are less reliable and, on real surfaces, blurrier: fade and soften them.
+    float travelFade = 1.0 - smoothstep(0.5, 1.0, travel);
+    float blurAmt = clamp(rough + travel * 0.3, 0.0, 1.0);
+    vec3 col = mix(texture(tex, hitUV).rgb, texture(tex3, hitUV).rgb, blurAmt);
+    fragColor = vec4(col * amount * edgeFade * travelFade, 0.0);
 }

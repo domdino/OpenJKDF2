@@ -52,7 +52,7 @@ if [ -z "$WARP" ] && [ "${CAPTURE_MAP:-01narshadda.jkl}" = "01narshadda.jkl" ]; 
     WARP="-10.4434 -5.4551 -1.1299 0 -59.98 0"
 fi
 
-BASELINE="hidpi=1 fullscreen=0 r_enableVsync=0 r_fpslimit=0 r_enableBloom=0 r_enableSSAO=0 r_ssaaMultiple=1 r_enableTextureFilter=0 r_enableGrade=0 r_perPixelLighting=0 r_glowLights=0 r_reflections=0 r_wetness=0.6 r_specular=1 r_reflectionStrength=1 r_haze=0 r_hazeDensity=0.08 r_hazeStrength=1 r_lightShafts=0 r_shaftStrength=1 r_anisotropy=8"
+BASELINE="hidpi=1 fullscreen=0 r_enableVsync=0 r_fpslimit=0 r_enableBloom=0 r_enableSSAO=0 r_ssaaMultiple=1 r_enableTextureFilter=0 r_enableGrade=0 r_perPixelLighting=0 r_glowLights=0 r_reflections=0 r_wetness=0.6 r_specular=1 r_reflectionStrength=1 r_haze=0 r_hazeDensity=0.08 r_hazeStrength=1 r_lightShafts=0 r_shaftStrength=1 r_anisotropy=8 r_reflectionRoughness=0.5"
 
 # Muted: OpenAL Soft (sound effects) and SDL audio (music, cutscenes) both get
 # silent drivers. SDL_MAC_BACKGROUND_APP keeps it out of the Dock and from taking

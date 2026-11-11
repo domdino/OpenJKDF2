@@ -165,6 +165,7 @@ extern flex_t jkPlayer_hazeStrength;
 extern int jkPlayer_bLightShafts;
 extern flex_t jkPlayer_shaftStrength;
 extern int jkPlayer_anisotropy;
+extern flex_t jkPlayer_reflectionRoughness;
 
 // Added (remaster): one switch for the whole remastered look. 1 = tuned defaults for every
 // remaster feature (per-pixel light, reflections, haze, shafts, grade, bloom, SSAO);

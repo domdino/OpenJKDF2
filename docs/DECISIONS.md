@@ -299,3 +299,11 @@ Changes, none of which change the look (checked in the hangar; Sarris differs on
 - `r_anisotropy` (default 8, range 1-16) caps anisotropic filtering, which was 16x.
 
 **Not measured yet.** During this work a Texture God FLUX job was running on the GPU (another session), so timings were meaningless (the hangar read 27-31 fps against 175 earlier with the same settings). Re-measure the Boc room, hangar and Sarris with the GPU idle before deciding on pass 2 (half-res reflections, GPU profile in Xcode, full-screen Retina numbers). Rule for later: don't benchmark while Texture God is running.
+
+## 2026-11-11 - Reflection fixes from Dom's playtest screenshots
+
+Dom: reflections in the hangar smeared diagonally off the wall light strips ("surely they should go straight down"), and rock reflected like a mirror.
+- **Streaks:** an SSR artifact. A ray skimming past a thin light strip counted as a hit from behind, and every floor pixel along that line took the same strip end. Fixed: tighter depth tolerance (max(0.01, step) instead of max(0.02, 2x step)), only surfaces facing the ray count as hits (dot(hit normal, ray) < -0.05), and long rays fade out.
+- **Mirror rock:** reflections were perfectly sharp on everything. Now glossy: the shader mixes in a blurred copy of the scene (the same 1/4-res blur the haze uses, now built once when reflections or haze are on) by `r_reflectionRoughness` (default 0.5; walls and slopes +0.3; longer rays blurrier), and rough surfaces reflect a bit less. Reads as a wet sheen, not a mirror.
+- Preset wetness lowered to 0.4 (was 0.6), since one gloss value still applies to every surface. Per-texture roughness (from Texture God) is the real fix.
+- Before/after: docs/screenshots/stage2-reflection-streak-fix.png (hangar), stage2-reflection-glossy-rock.png (Sarris; framing differs between runs).

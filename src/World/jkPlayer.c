@@ -78,6 +78,7 @@ flex_t jkPlayer_hazeStrength = 1.0;                         // Added (remaster)
 int jkPlayer_bLightShafts = 0;                              // Added (remaster)
 flex_t jkPlayer_shaftStrength = 1.0;                        // Added (remaster)
 int jkPlayer_anisotropy = 8;                                // Added (remaster): 1-16
+flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -230,6 +231,8 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_shaftStrength",            1.0,                        &jkPlayer_shaftStrength,            CVARFLAG_LOCAL);
     // Anisotropic filtering level for HD textures (needs texture filtering on). 1-16.
     sithCvar_RegisterInt("r_anisotropy",                8,                          &jkPlayer_anisotropy,               CVARFLAG_LOCAL);
+    // How blurry reflections are: 0 = mirror, 1 = very blurry. Until per-texture roughness exists.
+    sithCvar_RegisterFlex("r_reflectionRoughness",      0.5,                        &jkPlayer_reflectionRoughness,      CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -270,10 +273,11 @@ typedef struct { const char* pName; const char* pOn; const char* pOff; } jkPlaye
 static const jkPlayerPresetEntry jkPlayer_aRemasterPreset[] = {
     {"r_perPixelLighting",   "1",   "0"},
     {"r_specular",           "1",   "1"},
-    {"r_wetness",            "0.6", "0.6"},
+    {"r_wetness",            "0.4", "0.6"},   // 0.4: everything shares one gloss until per-texture roughness exists, so keep it modest
     {"r_glowLights",         "0",   "0"},   // experimental, reads as blobs
     {"r_reflections",        "1",   "0"},
     {"r_reflectionStrength", "1",   "1"},
+    {"r_reflectionRoughness","0.5", "0.5"},
     {"r_haze",               "1",   "0"},
     {"r_hazeDensity",        "0.08","0.08"},
     {"r_hazeStrength",       "1",   "1"},
@@ -336,6 +340,7 @@ void jkPlayer_ResetVars()
     jkPlayer_bLightShafts = 0;
     jkPlayer_shaftStrength = 1.0;
     jkPlayer_anisotropy = 8;
+    jkPlayer_reflectionRoughness = 0.5;
     jkPlayer_gamma = 1.0;
     jkPlayer_bEnableJkgm = 1;
     jkPlayer_bEnableTexturePrecache = 1;
@@ -699,6 +704,7 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveBool(ext_fpath, "lightshafts", jkPlayer_bLightShafts);
         stdJSON_SaveFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
         stdJSON_SaveInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
+        stdJSON_SaveFloat(ext_fpath, "reflectionroughness", jkPlayer_reflectionRoughness);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -921,6 +927,7 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_bLightShafts = stdJSON_GetBool(ext_fpath, "lightshafts", jkPlayer_bLightShafts);
         jkPlayer_shaftStrength = stdJSON_GetFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
         jkPlayer_anisotropy = stdJSON_GetInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
+        jkPlayer_reflectionRoughness = stdJSON_GetFloat(ext_fpath, "reflectionroughness", jkPlayer_reflectionRoughness);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

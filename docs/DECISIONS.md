@@ -307,3 +307,20 @@ Dom: reflections in the hangar smeared diagonally off the wall light strips ("su
 - **Mirror rock:** reflections were perfectly sharp on everything. Now glossy: the shader mixes in a blurred copy of the scene (the same 1/4-res blur the haze uses, now built once when reflections or haze are on) by `r_reflectionRoughness` (default 0.5; walls and slopes +0.3; longer rays blurrier), and rough surfaces reflect a bit less. Reads as a wet sheen, not a mirror.
 - Preset wetness lowered to 0.4 (was 0.6), since one gloss value still applies to every surface. Per-texture roughness (from Texture God) is the real fix.
 - Before/after: docs/screenshots/stage2-reflection-streak-fix.png (hangar), stage2-reflection-glossy-rock.png (Sarris; framing differs between runs).
+
+## 2026-11-11 - Material maps: roughness, metalness, AO, normals
+
+**Pack format extension** (optional, backwards compatible): `orm_map` (glTF convention, R = ambient occlusion, G = roughness, B = metalness) and `normal_map` (tangent-space, OpenGL +Y). Texture God outputs exactly these.
+
+**Engine**
+- jkgm loader: parses both, decodes and uploads them with mips and anisotropic filtering (always smooth-filtered) via `jkgm_load_extra_map`. New surface fields `orm_texture_id`, `normal_texture_id`; reset, freed and refreshed wherever the displacement map is.
+- Packs now load in alphabetical order and later ones win where they overlap, so `texturegod` overrides the community `jk_neural_upscale_pack`.
+- Renderer binds ORM on texture unit 5 and normal on unit 6 per surface, with `u_hasOrm` / `u_hasNormal`. A sixth render target (`tex5`, RGBA8: roughness, metalness) carries material to the reflection pass.
+- Shader: roughness sets the highlight exponent (2/r^4 - 2) and strength ((1 - r)^2); metal tints highlights with the surface colour and cuts diffuse; AO darkens lighting; the normal map bends the face normal through a tangent frame built from screen derivatives of position and UV (no tangents in JK's vertex data). Surfaces without maps default to roughness 0.75, non-metal, no AO, so rock and plaster stop reading as polished. `r_wetness` now smooths the whole world on top of the material (roughness x (1 - 0.6 x wetness)) instead of being the only gloss control.
+- Reflections take each pixel's roughness from the material target: smooth surfaces reflect, rough ones barely, floors still favoured.
+
+**Importer: `tools/texturegod_import.py <Texture God run>`**. Reads the run's manifest (keyed `<mat>.cel<N>.png`), imports albedo/ORM/normal/emissive for every texture that passed QC into `hd/jkgm/materials/texturegod`, then runs `jkgm_signatures.py` for palette-correct engine hashes.
+
+**Test** with Dom's fast run (`out/jk_fast`, PBRify only): 30 imported, 29 matched a palette (66 signatures). Level 1 spawn view: 10 Texture God textures confirmed loading via `OPENJKDF2_JKGM_DEBUG`. The visible difference is small (2.8%), as expected from the colour-locked fast pass (docs/screenshots/stage3-texturegod-fast-zoom.png). Defaults on everything else: hangar floor reflects a little less, Sarris rock highlight broader and dimmer (docs/screenshots/stage3-material-defaults.png). Frame rate unaffected (hangar 152, Sarris 164 fps, GPU idle).
+
+**Unverified**: normal-map handedness (JK's V direction vs the PNG's) can't be judged on the fast pass; check on the first full Texture God run, where bumps should light from the correct side. If inverted, flip the green channel in the shader.

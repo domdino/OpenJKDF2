@@ -6,6 +6,7 @@
 uniform sampler2D tex;
 uniform sampler2D tex2;
 uniform sampler2D tex3;     // blurred scene colour, for glossy (rough) reflections
+uniform sampler2D texMat;   // per-pixel material: R = roughness, G = metalness
 uniform float u_roughness;  // r_reflectionRoughness: 0 = mirror, 1 = very blurry
 uniform vec2 iResolution;
 uniform vec4 u_proj;       // half screen width, half screen height, focal length
@@ -63,11 +64,14 @@ void main(void)
 
     // How much this surface reflects: wet floors most, walls a little, more at grazing angles.
     float floorness = smoothstep(0.55, 0.95, dot(N, u_upCam));
-    float refl = clamp(u_wetness, 0.0, 1.0) * mix(0.2, 1.0, floorness);
+    // Reflectivity comes from the surface's own roughness (material map, or the default),
+    // with floors favoured (puddles, wet ground). Smooth surfaces reflect, rough ones barely.
+    float matRough = texture(texMat, f_uv).r;
+    float refl = (1.0 - matRough) * mix(0.4, 1.0, floorness) * mix(0.6, 1.0, clamp(u_wetness, 0.0, 1.0));
     float fresnel = mix(0.2, 1.0, pow(1.0 - clamp(dot(-V, N), 0.0, 1.0), 4.0));
     // Roughness: floors use the base value, walls and slopes are rougher. Rough surfaces
     // reflect a blurred scene and a bit less of it, which reads as a wet sheen, not a mirror.
-    float rough = clamp(u_roughness + (1.0 - floorness) * 0.3, 0.0, 1.0);
+    float rough = clamp(mix(matRough, u_roughness, 0.3) + (1.0 - floorness) * 0.2, 0.0, 1.0);
     float amount = refl * fresnel * abs(u_strength) * mix(1.0, 0.6, rough);
     if (amount < 0.01) { if (dbg) fragColor = vec4(0.0, 0.5, 0.5, 0.0); return; } // cyan: amount ~0
 

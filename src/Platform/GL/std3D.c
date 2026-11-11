@@ -83,6 +83,7 @@ typedef struct std3DFramebuffer
     GLuint tex2;
     GLuint tex3;
     GLuint tex4; // Added (remaster): reflection data (octahedral normal, signed depth)
+    GLuint tex5; // Added (remaster): material per pixel (R = roughness, G = metalness)
 
     std3DIntermediateFbo window;
     std3DIntermediateFbo main;
@@ -128,6 +129,8 @@ static GLint uniform_ppl = -1, uniform_pplNumLights = -1, uniform_pplLightPos = 
 static GLint uniform_pplAtten = -1, uniform_pplProj = -1, uniform_pplScreen = -1, uniform_pplSpecular = -1, uniform_pplWetness = -1;
 static GLint uniform_pplNumGlow = -1, uniform_pplGlowPos = -1, uniform_pplGlowCol = -1;
 static GLint uniform_ssrWrite = -1, uniform_pplUpCam = -1;
+static GLint uniform_texOrm = -1, uniform_texNormal = -1, uniform_hasOrm = -1, uniform_hasNormal = -1; // Added (remaster)
+static GLint std3D_ssrUniformTexMat = -1;
 // Added (remaster): screen-space reflection pass, and the projection values it needs from
 // the last world draw of the frame.
 std3DSimpleTexStage std3D_ssrStage;
@@ -294,8 +297,8 @@ static int std3D_GBufferActive()
 
 static void std3D_SetSceneDrawBuffers()
 {
-    static const GLenum bufs[5] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
-    glDrawBuffers(std3D_GBufferActive() ? 5 : (jkPlayer_enableSSAO ? 4 : 2), bufs);
+    static const GLenum bufs[6] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4, GL_COLOR_ATTACHMENT5};
+    glDrawBuffers(std3D_GBufferActive() ? 6 : (jkPlayer_enableSSAO ? 4 : 2), bufs);
 }
 
 void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* pFb)
@@ -376,6 +379,16 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, pFb->tex4, 0);
+
+    // Added (remaster): material target (roughness, metalness) for the reflection pass.
+    glGenTextures(1, &pFb->tex5);
+    glBindTexture(GL_TEXTURE_2D, pFb->tex5);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT5, GL_TEXTURE_2D, pFb->tex5, 0);
 
     // Set up our render buffer
     glGenRenderbuffers(1, &pFb->rbo);
@@ -461,6 +474,7 @@ void std3D_deleteFramebuffer(std3DFramebuffer* pFb)
     glDeleteTextures(1, &pFb->tex2);
     glDeleteTextures(1, &pFb->tex3);
     glDeleteTextures(1, &pFb->tex4); // Added (remaster)
+    glDeleteTextures(1, &pFb->tex5);
     glDeleteRenderbuffers(1, &pFb->rbo);
 
     std3D_deleteIntermediateFbo(&pFb->blur1);
@@ -607,6 +621,7 @@ int init_resources()
     std3D_ssrUniformWetness = std3D_tryFindUniform(std3D_ssrStage.program, "u_wetness");
     std3D_ssrUniformStrength = std3D_tryFindUniform(std3D_ssrStage.program, "u_strength");
     std3D_ssrUniformRoughness = std3D_tryFindUniform(std3D_ssrStage.program, "u_roughness");
+    std3D_ssrUniformTexMat = std3D_tryFindUniform(std3D_ssrStage.program, "texMat");
     // Added (remaster): atmosphere
     if (!std3D_loadSimpleTexProgram("shaders/haze", &std3D_hazeStage)) return false;
     if (!std3D_loadSimpleTexProgram("shaders/shafts", &std3D_shaftStage)) return false;
@@ -635,6 +650,10 @@ int init_resources()
     uniform_pplGlowCol = std3D_tryFindUniform(programDefault, "u_pplGlowCol");
     uniform_ssrWrite = std3D_tryFindUniform(programDefault, "u_ssrWrite");
     uniform_pplUpCam = std3D_tryFindUniform(programDefault, "u_pplUpCam");
+    uniform_texOrm = std3D_tryFindUniform(programDefault, "texOrm");
+    uniform_texNormal = std3D_tryFindUniform(programDefault, "texNormal");
+    uniform_hasOrm = std3D_tryFindUniform(programDefault, "u_hasOrm");
+    uniform_hasNormal = std3D_tryFindUniform(programDefault, "u_hasNormal");
     uniform_mvp = std3D_tryFindUniform(programDefault, "mvp");
     uniform_tex = std3D_tryFindUniform(programDefault, "tex");
     uniform_texEmiss = std3D_tryFindUniform(programDefault, "texEmiss");
@@ -2800,6 +2819,10 @@ void std3D_DrawSceneFbo()
         glUniform1f(std3D_ssrUniformWetness, jkPlayer_wetness);
         glUniform1f(std3D_ssrUniformStrength, jkPlayer_reflectionStrength);
         glUniform1f(std3D_ssrUniformRoughness, jkPlayer_reflectionRoughness);
+        glUniform1i(std3D_ssrUniformTexMat, 5);
+        glActiveTexture(GL_TEXTURE0 + 5);
+        glBindTexture(GL_TEXTURE_2D, std3D_pFb->tex5);
+        glActiveTexture(GL_TEXTURE0);
         glBlendFunc(GL_ONE, GL_ONE);
         std3D_DrawSimpleTex(&std3D_ssrStage, pOut, std3D_pFb->tex0, std3D_pFb->tex4,
                             bSceneBlur ? std3D_pFb->hazeBlur1.tex : std3D_pFb->tex0, 0.0, 0.0, 0.0, 0);
@@ -2962,6 +2985,14 @@ void std3D_DoTex(rdDDrawSurface* tex, rdTri* tri, int tris_left)
     else {
         glBindTexture(GL_TEXTURE_2D, displace_tex_id);
     }
+    // Added (remaster): material maps (ORM, normal), when the HD pack provides them.
+    glActiveTexture(GL_TEXTURE0 + 5);
+    glBindTexture(GL_TEXTURE_2D, tex->orm_texture_id ? tex->orm_texture_id : blank_tex);
+    glActiveTexture(GL_TEXTURE0 + 6);
+    glBindTexture(GL_TEXTURE_2D, tex->normal_texture_id ? tex->normal_texture_id : blank_tex);
+    glUniform1i(uniform_hasOrm, tex->orm_texture_id != 0);
+    glUniform1i(uniform_hasNormal, tex->normal_texture_id != 0);
+    glActiveTexture(GL_TEXTURE0 + 4);
     //if (tex->emissive_factor[0] != 0.0 || tex->emissive_factor[1] != 0.0 || tex->emissive_factor[2] != 0.0)
     //    stdPlatform_Printf("%f %f %f\n", tex->emissive_factor[0], tex->emissive_factor[1], tex->emissive_factor[2]);
     float emissive_mult = (jkPlayer_enableBloom ? 1.0 : 5.0);
@@ -3087,6 +3118,8 @@ void std3D_DrawRenderList()
     glUniform1i(uniform_worldPaletteLights, 2);
     glUniform1i(uniform_texEmiss, 3);
     glUniform1i(uniform_displacement_map, 4);
+    glUniform1i(uniform_texOrm, 5);    // Added (remaster)
+    glUniform1i(uniform_texNormal, 6); // Added (remaster)
     
     {
     
@@ -3737,6 +3770,8 @@ int std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is_alph
     texture->texture_id = image_texture;
     texture->emissive_texture_id = 0;
     texture->displacement_texture_id = 0;
+    texture->orm_texture_id = 0;
+    texture->normal_texture_id = 0;
     texture->texture_loaded = 1;
     texture->emissive_factor[0] = 0.0;
     texture->emissive_factor[1] = 0.0;
@@ -4272,6 +4307,14 @@ void std3D_PurgeTextureEntry(int i) {
         tex->emissive_texture_id = 0;
     }
 
+    if (tex->orm_texture_id != 0) { // Added (remaster)
+        glDeleteTextures(1, &tex->orm_texture_id);
+        tex->orm_texture_id = 0;
+    }
+    if (tex->normal_texture_id != 0) { // Added (remaster)
+        glDeleteTextures(1, &tex->normal_texture_id);
+        tex->normal_texture_id = 0;
+    }
     if (tex->displacement_texture_id != 0) {
         glDeleteTextures(1, &tex->displacement_texture_id);
         tex->displacement_texture_id = 0;

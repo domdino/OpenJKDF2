@@ -67,7 +67,9 @@ That breaks down into concrete engine work:
 - [x] Rebuild from all three Remastered installers, palette-correct (no wrong colours in other levels)
 - [x] Engine fix: HD texture hashes use the level's real palette (coverage went from almost none to dozens per view)
 - [ ] Performance: HD textures plus the full remaster look are too slow in some rooms (optimise passes)
-- [ ] Per-texture roughness so rock isn't as shiny as metal
+- [x] Material maps in the engine: roughness, metalness, AO and normal maps per texture (rock defaults to matte)
+- [x] Importer for Texture God output (my own AI upscaling and PBR pipeline)
+- [ ] First full Texture God batch in game
 - [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
 - [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
 

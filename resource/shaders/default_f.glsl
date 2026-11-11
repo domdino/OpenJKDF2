@@ -92,6 +92,11 @@ uniform vec4 u_pplGlowPos[24];          // camera space xyz, w = radius
 uniform vec4 u_pplGlowCol[24];          // rgb colour, w = intensity
 uniform int u_ssrWrite;                 // 1 = write reflection data
 uniform vec3 u_pplUpCam;                // world up in camera space
+// Added (remaster): HD material maps. ORM = glTF convention (R AO, G roughness, B metal).
+uniform sampler2D texOrm;
+uniform sampler2D texNormal;
+uniform int u_hasOrm;
+uniform int u_hasNormal;
 
 vec2 ssr_octEncode(vec3 n)
 {
@@ -112,15 +117,16 @@ vec3 ppl_viewPos()
                 (u_pplProj.y - c.y) * depth / u_pplProj.z);
 }
 
-void ppl_compute(vec3 P, vec3 N, out vec3 diff, out vec3 spec)
+void ppl_compute(vec3 P, vec3 N, float rough, float metal, out vec3 diff, out vec3 spec)
 {
     diff = vec3(0.0);
     spec = vec3(0.0);
     vec3 V = normalize(-P);
     if (dot(N, V) < 0.0) N = -N;
-    float wet = clamp(u_pplWetness, 0.0, 1.0);
-    float shininess = mix(8.0, 128.0, wet);
-    float specScale = u_pplSpecular * wet;
+    // Roughness drives highlight sharpness and strength (Blinn-Phong exponent from roughness).
+    float r4 = max(rough * rough * rough * rough, 1e-4);
+    float shininess = clamp(2.0 / r4 - 2.0, 2.0, 512.0);
+    float specScale = u_pplSpecular * (1.0 - rough) * (1.0 - rough) * 2.0;
 
     for (int i = 0; i < u_pplNumLights; i++)
     {
@@ -172,6 +178,8 @@ layout(location = 3) out vec4 fragColorNormal;
 // alpha 1 on solid surfaces so blending writes it as-is, all zero on see-through ones so
 // blending leaves it alone.
 layout(location = 4) out vec4 fragColorSSR;
+// Added (remaster): material for the reflection pass (R = roughness, G = metalness, A = 1 on solid).
+layout(location = 5) out vec4 fragColorMat;
 
 float luminance(vec3 c_rgb)
 {
@@ -358,6 +366,28 @@ void main(void)
     vec3 ppl_P = ppl_viewPos();
     vec3 ppl_N = normalize(cross(dFdx(ppl_P), dFdy(ppl_P)));
     vec3 ppl_spec = vec3(0.0);
+    if (dot(ppl_N, -ppl_P) < 0.0) ppl_N = -ppl_N;
+
+    // Added (remaster): material. Without an ORM map, surfaces default to fairly rough,
+    // non-metal and unoccluded, so rock and plaster don't read as polished.
+    vec4 mat_orm = (u_hasOrm != 0) ? texture(texOrm, f_uv) : vec4(1.0, 0.75, 0.0, 1.0);
+    float mat_ao = mat_orm.r;
+    float mat_metal = mat_orm.b;
+    // r_wetness makes the whole world somewhat smoother (wet), on top of the material.
+    float mat_rough = clamp(mat_orm.g * (1.0 - 0.6 * clamp(u_pplWetness, 0.0, 1.0)), 0.04, 1.0);
+    // Normal map: bend the face normal with a tangent frame built from screen derivatives
+    // of position and UV (no tangents in the vertex data).
+    if (u_hasNormal != 0)
+    {
+        vec3 tn = texture(texNormal, f_uv).xyz * 2.0 - 1.0;
+        vec3 dp1 = dFdx(ppl_P), dp2 = dFdy(ppl_P);
+        vec2 duv1 = dFdx(f_uv), duv2 = dFdy(f_uv);
+        vec3 dp2perp = cross(dp2, ppl_N), dp1perp = cross(ppl_N, dp1);
+        vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+        vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+        float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
+        ppl_N = normalize(mat3(T * invmax, B * invmax, ppl_N) * tn);
+    }
 
     vec2 adj_texcoords = f_uv;
     if(displacement_factor != 0.0) {
@@ -451,8 +481,10 @@ void main(void)
     if (u_ppl != 0 && f_invz > 0.0 && tex_mode != TEX_MODE_TEST)
     {
         vec3 ppl_diff;
-        ppl_compute(ppl_P, ppl_N, ppl_diff, ppl_spec);
-        vec3 lit = min(vertex_color.rgb + ppl_diff, vec3(1.0));
+        ppl_compute(ppl_P, ppl_N, mat_rough, mat_metal, ppl_diff, ppl_spec);
+        // Metals have little diffuse; ambient occlusion darkens crevices.
+        ppl_diff *= (1.0 - 0.8 * mat_metal);
+        vec3 lit = min(vertex_color.rgb + ppl_diff, vec3(1.0)) * mix(1.0, mat_ao, 0.8);
         main_color.rgb = sampled_color.rgb * lit * albedoFactor_copy.rgb;
 
         // No highlights on see-through or additive faces (sprites, bolts, glass). (Full vertex
@@ -460,7 +492,8 @@ void main(void)
         // (D3DBLEND_ONE is what solid surfaces use; only SRCALPHA/INVSRCALPHA are see-through.)
         bool bNoSpec = (blend_mode == D3DBLEND_SRCALPHA || blend_mode == D3DBLEND_INVSRCALPHA);
         if (bNoSpec) ppl_spec = vec3(0.0);
-        main_color.rgb += ppl_spec * mix(vec3(1.0), sampled_color.rgb, 0.35);
+        // Highlights take the surface colour on metals, stay mostly white otherwise.
+        main_color.rgb += ppl_spec * mix(vec3(1.0), sampled_color.rgb, mix(0.35, 1.0, mat_metal));
     }
     float should_write_normals = 1.0;
     float orig_alpha = main_color.a;
@@ -592,6 +625,7 @@ finalEmiss.rgb += ppl_spec * 0.5; // Added (remaster): wet glints feed the bloom
 
     // Added (remaster): reflection data
     fragColorSSR = vec4(0.0);
+    fragColorMat = vec4(0.0);
     if (u_ssrWrite != 0 && f_invz > 0.0)
     {
         bool bSolid = (blend_mode != D3DBLEND_SRCALPHA && blend_mode != D3DBLEND_INVSRCALPHA
@@ -604,6 +638,7 @@ finalEmiss.rgb += ppl_spec * 0.5; // Added (remaster): wet glints feed the bloom
             // light sources: brightly lit floors are at full light too.)
             bool bReflects = tex_mode != TEX_MODE_TEST;
             fragColorSSR = vec4(ssr_octEncode(n), bReflects ? ppl_P.y : -ppl_P.y, 1.0);
+            fragColorMat = vec4(mat_rough, mat_metal, 0.0, 1.0);
         }
     }
 fragColorEmiss = finalEmiss;

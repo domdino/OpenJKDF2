@@ -5,6 +5,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 #include <cstring>
 #include <stdlib.h>
 #ifndef _WIN32
@@ -336,6 +337,8 @@ typedef struct jkgm_cache_entry_t
     std::string albedo_tex;
     std::string emissive_tex;
     std::string displacement_tex;
+    std::string orm_tex;     // Added (remaster)
+    std::string normal_tex;  // Added (remaster)
     float emissive_factor[3];
     float albedo_factor[4];
     float displacement_factor;
@@ -343,6 +346,8 @@ typedef struct jkgm_cache_entry_t
     void* albedo_data;
     void* emissive_data;
     void* displacement_data;
+    void* orm_data;          // Added (remaster)
+    void* normal_data;       // Added (remaster)
 
     int albedo_width;
     int albedo_height;
@@ -355,6 +360,9 @@ typedef struct jkgm_cache_entry_t
     int displacement_width;
     int displacement_height;
     int displacement_hasAlpha;
+
+    int orm_width, orm_height, orm_hasAlpha;          // Added (remaster)
+    int normal_width, normal_height, normal_hasAlpha; // Added (remaster)
 } jkgm_cache_entry_t;
 
 static std::unordered_map<std::string, jkgm_cache_entry_t> jkgm_cache;
@@ -400,7 +408,13 @@ void jkgm_populate_cache()
         return;
     }
 
-    for (const auto& fs_entry : fs::directory_iterator(jkgm_materials_path)) {
+    // Added (remaster): read packs in alphabetical order so overrides are predictable: when
+    // two packs replace the same texture, the later one (alphabetically) wins.
+    std::vector<fs::directory_entry> pack_dirs;
+    for (const auto& e : fs::directory_iterator(jkgm_materials_path)) pack_dirs.push_back(e);
+    std::sort(pack_dirs.begin(), pack_dirs.end(),
+              [](const fs::directory_entry& a, const fs::directory_entry& b) { return a.path().filename() < b.path().filename(); });
+    for (const auto& fs_entry : pack_dirs) {
         if (!fs_entry.is_directory()) {
             continue;
         }
@@ -474,6 +488,18 @@ void jkgm_populate_cache()
                 }
                     
                 entry.albedo_tex = base_path + it.value("albedo_map", "");
+
+                // Added (remaster): material maps. orm_map follows the glTF convention
+                // (R = ambient occlusion, G = roughness, B = metalness); normal_map is a
+                // tangent-space OpenGL normal map. Both optional.
+                entry.orm_tex = it.value("orm_map", "");
+                if (entry.orm_tex != "") entry.orm_tex = base_path + entry.orm_tex;
+                entry.normal_tex = it.value("normal_map", "");
+                if (entry.normal_tex != "") entry.normal_tex = base_path + entry.normal_tex;
+                entry.orm_data = NULL;
+                entry.normal_data = NULL;
+                entry.orm_width = entry.orm_height = entry.orm_hasAlpha = 0;
+                entry.normal_width = entry.normal_height = entry.normal_hasAlpha = 0;
 
                 entry.albedo_data = NULL;
                 entry.emissive_data = NULL;
@@ -655,6 +681,29 @@ void jkgm_populate_shortcuts(tVBuffer *vbuf, rdDDrawSurface *texture, rdMaterial
     }
 }
 
+// Added (remaster): decode a PNG map (cached in the entry) and upload it with mips and
+// anisotropic filtering. Returns the GL texture id, or 0.
+static GLuint jkgm_load_extra_map(const std::string& path, void** ppData, int* pW, int* pH, int* pAlpha)
+{
+    if (path == "") return 0;
+    GLubyte* data = (GLubyte*)*ppData;
+    if (!data && !loadPngImage(path.c_str(), pW, pH, pAlpha, &data, 0)) {
+        stdPlatform_Printf("jkgm: could not load map `%s`\n", path.c_str());
+        return 0;
+    }
+    *ppData = data;
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexImage2D(GL_TEXTURE_2D, 0, *pAlpha ? GL_RGBA8 : GL_RGB8, *pW, *pH, 0, *pAlpha ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, data);
+    // Maps always filter smoothly: nearest-sampled normals and roughness just look noisy.
+    std3D_SetTrueColorFiltering(1, 1);
+    return tex;
+}
+
 int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is_alpha_tex, int no_alpha, rdMaterial* material, int cel)
 {
     if (Main_bHeadless) return 0;
@@ -674,6 +723,8 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
     texture->albedo_factor[3] = 1.0f;
     texture->emissive_data = NULL;
     texture->displacement_texture_id = 0;
+    texture->orm_texture_id = 0;
+    texture->normal_texture_id = 0;
     texture->displacement_factor = 0.0;
     texture->displacement_data = NULL;
     texture->albedo_data = NULL;
@@ -771,6 +822,8 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
 
         texture->emissive_texture_id = 0;
         texture->displacement_texture_id = 0;
+        texture->orm_texture_id = 0;
+        texture->normal_texture_id = 0;
         texture->texture_id = 0;
 
         {
@@ -816,6 +869,8 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
                 texture->albedo_factor[3] = 1.0f;
                 texture->emissive_data = NULL;
                 texture->displacement_texture_id = 0;
+                texture->orm_texture_id = 0;
+                texture->normal_texture_id = 0;
                 texture->displacement_factor = 0.0;
                 texture->displacement_data = NULL;
                 texture->albedo_data = NULL;
@@ -931,6 +986,10 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
             }
         }
 
+        // Added (remaster): material maps
+        texture->orm_texture_id = jkgm_load_extra_map(entry->orm_tex, &entry->orm_data, &entry->orm_width, &entry->orm_height, &entry->orm_hasAlpha);
+        texture->normal_texture_id = jkgm_load_extra_map(entry->normal_tex, &entry->normal_data, &entry->normal_width, &entry->normal_height, &entry->normal_hasAlpha);
+
         texture->emissive_factor[0] = emissive_factor[0];
         texture->emissive_factor[1] = emissive_factor[1];
         texture->emissive_factor[2] = emissive_factor[2];
@@ -971,6 +1030,15 @@ void jkgm_free_cache_entry(jkgm_cache_entry_t* entry)
     if (entry->emissive_data != NULL) {
         jkgm_aligned_free(entry->emissive_data);
         entry->emissive_data = NULL;
+    }
+
+    if (entry->orm_data != NULL) { // Added (remaster)
+        jkgm_aligned_free(entry->orm_data);
+        entry->orm_data = NULL;
+    }
+    if (entry->normal_data != NULL) { // Added (remaster)
+        jkgm_aligned_free(entry->normal_data);
+        entry->normal_data = NULL;
     }
 
     if (entry->displacement_data != NULL) {

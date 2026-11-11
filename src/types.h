@@ -1057,6 +1057,8 @@ typedef struct rdDDrawSurface
 #ifdef SDL2_RENDER
     uint32_t emissive_texture_id;
     uint32_t displacement_texture_id;
+    uint32_t orm_texture_id;    // Added (remaster): HD material map, R = AO, G = roughness, B = metalness
+    uint32_t normal_texture_id; // Added (remaster): HD tangent-space normal map (OpenGL, +Y up)
     flex_t emissive_factor[3];
     flex_t albedo_factor[4];
     flex_t displacement_factor;

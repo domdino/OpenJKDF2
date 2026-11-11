@@ -88,7 +88,8 @@ That breaks down into concrete engine work:
 - [ ] Material pass on the converted characters (Texture God)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper
-- [ ] New lightsaber
+- [x] New lightsaber: Kyle's hilt from Jedi Outcast in third person, first person and the pickups
+- [x] Third-person weapons no longer carry the 1997 hand
 
 ### Stage 5 checklist
 

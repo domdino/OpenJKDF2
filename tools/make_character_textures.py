@@ -58,8 +58,11 @@ def main():
     pal_use = pal.copy()
     pal_use[0] = 1e6  # index 0 is transparent in some modes; never pick it
 
-    model_path = os.path.join(out_dir, name + ".3do")
-    m = jk3do.load(model_path)
+    names = name.split(",")  # several models can share one folder's materials (e.g. the saber)
+    models = {n: jk3do.load(os.path.join(out_dir, n + ".3do")) for n in names}
+    all_mats = []
+    for mm in models.values():
+        all_mats += [x for x in mm.materials if x not in all_mats]
     os.makedirs(os.path.join(out_dir, "mat"), exist_ok=True)
     pack_dir = os.path.join(ROOT, "hd", "jkgm", "materials", pack)
     os.makedirs(pack_dir, exist_ok=True)
@@ -68,7 +71,7 @@ def main():
         "name": pack, "description": "Converted characters (tools/make_character_textures.py)", "materials": []}
 
     dims = {}
-    for mat_name in m.materials:
+    for mat_name in all_mats:
         if mat_name not in info["textures"]:
             continue  # an original JK material on a kept rigid part
         src = info["textures"].get(mat_name)
@@ -94,19 +97,25 @@ def main():
         print("  %-28s %s" % (mat_name, os.path.basename(src) if src else "(grey)"))
 
     if info.get("uv_fraction"):
-        me = m.geosets[0][info.get("skin_mesh", 0)]
-        uvs = list(me.uvs)
-        for f in me.faces:
-            w, h = dims[m.materials[f["mat"]]]
-            for _, t in f["idx"]:
-                u, v = me.uvs[t]
-                uvs[t] = (u * w, v * h)
-        me.uvs = uvs
-        jk3do.save(m, model_path, "%s with texel UVs (tools/make_character_textures.py)" % name)
+        # Faces with a converted material have 0-1 UVs; make them texels of that MAT.
+        for n, m in models.items():
+            for geo in m.geosets:
+                for me in geo:
+                    uvs = list(me.uvs)
+                    for f in me.faces:
+                        mname = m.materials[f["mat"]]
+                        if mname not in dims:
+                            continue
+                        w, h = dims[mname]
+                        for _, t in f["idx"]:
+                            u, v = me.uvs[t]
+                            uvs[t] = (u * w, v * h)
+                    me.uvs = uvs
+            jk3do.save(m, os.path.join(out_dir, n + ".3do"), "%s with texel UVs (tools/make_character_textures.py)" % n)
         info["uv_fraction"] = False
         json.dump(info, open(os.path.join(out_dir, "textures.json"), "w"), indent=1)
     json.dump(meta, open(meta_path, "w"), indent=1)
-    print("%d materials -> %s/mat, HD pack %s" % (len(m.materials), out_dir, os.path.relpath(pack_dir, ROOT)))
+    print("%d materials -> %s/mat, HD pack %s" % (len(dims), out_dir, os.path.relpath(pack_dir, ROOT)))
 
 
 if __name__ == "__main__":

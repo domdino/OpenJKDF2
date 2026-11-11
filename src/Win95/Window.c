@@ -7,6 +7,8 @@
 #include "Engine/sithCamera.h"
 #include "Engine/sithKeyFrame.h"
 #include "Engine/sithPuppet.h"
+#include "Main/jkDev.h"
+#include "World/sithWeapon.h"
 #include "Main/sithCvar.h"
 #include "Primitives/rdMatrix.h"
 #include "Primitives/rdVector.h"
@@ -1505,12 +1507,30 @@ static void Window_DevCaptureTick(void)
             if (pWarp && pWarp[0] && !sithCommand_Warp(NULL, pWarp))
                 printf("CAPTURE: warp failed for '%s'\n", pWarp);
         }
+        // OPENJKDF2_CAPTURE_CMDS="red5;jediwannabe": cheat/console commands once the level is up.
+        // OPENJKDF2_CAPTURE_WEAPON=10: then switch to that weapon (10 = lightsaber).
+        const char* pCmds = getenv("OPENJKDF2_CAPTURE_CMDS");
+        if (pCmds && pCmds[0]) {
+            char aCmds[256];
+            stdString_SafeStrCopy(aCmds, pCmds, sizeof(aCmds));
+            for (char* c = strtok(aCmds, ";"); c; c = strtok(NULL, ";")) {
+                printf("CAPTURE: command %s -> %d\n", c, jkDev_TryCommand(c));
+            }
+        }
         tMark = now;
         state = 1;
         return;
     }
 
     if (state == 1) {
+        // Weapon switch 2 s in, after the level's startup scripts have picked their weapon.
+        static int bWeaponDone = 0;
+        const char* pWeap = getenv("OPENJKDF2_CAPTURE_WEAPON");
+        if (pWeap && pWeap[0] && !bWeaponDone && now - tMark > 2000000000ull) {
+            SithThing* pP = sithWorld_g_pCurrentWorld ? sithWorld_g_pCurrentWorld->pLocalPlayer : NULL;
+            if (pP) printf("CAPTURE: weapon %s -> %d\n", pWeap, sithWeapon_SelectWeapon(pP, atoi(pWeap), 0));
+            bWeaponDone = 1;
+        }
         // OPENJKDF2_CAPTURE_VIDEO=video\01-02a.smk: once the level is up (3 s), play that
         // cutscene and time/shoot it instead, CAPTURE_DELAY seconds into it.
         static int bVideoStarted = 0;

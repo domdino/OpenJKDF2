@@ -30,8 +30,31 @@ def clear():
 
 def import_model(path, mat_dirs, cmp):
     clear()
-    bpy.ops.import_scene.sith_3do(filepath=path, mat_dir=mat_dirs[0], cmp_file=cmp, import_radius_objects=False)
+    # The importer takes one MAT folder: merge them (links) so kept original materials are found too.
+    import tempfile
+    merged = tempfile.mkdtemp(prefix="cmpmats")
+    for d in reversed(mat_dirs):
+        for f in os.listdir(d):
+            dst = os.path.join(merged, f.lower())
+            if os.path.lexists(dst):
+                os.remove(dst)
+            os.symlink(os.path.join(d, f), dst)
+    bpy.ops.import_scene.sith_3do(filepath=path, mat_dir=merged, cmp_file=cmp, import_radius_objects=False)
     return [o for o in bpy.data.objects if o.type == "MESH"]
+
+
+def stand_up(objs):
+    """Props (hilts, weapons): rotate so the longest axis points up, for the character framing."""
+    from mathutils import Matrix
+    pts = [o.matrix_world @ Vector(c) for o in objs for c in o.bound_box]
+    ext = [max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3)]
+    ax = ext.index(max(ext))
+    if ax == 2:
+        return
+    R = Matrix.Rotation(-math.pi / 2, 4, "X") if ax == 1 else Matrix.Rotation(math.pi / 2, 4, "Y")
+    for o in [o for o in bpy.data.objects if o.parent is None]:
+        o.matrix_world = R @ o.matrix_world
+    bpy.context.view_layer.update()
 
 
 def set_images(objs, hd_dir, nearest):
@@ -99,7 +122,7 @@ def shoot(prefix, ctr, h, frame_ctr, frame_h):
     cam = sc.camera
     for tag, ang in (("front", 0), ("threequarter", 35)):
         a = math.radians(ang)
-        dist = frame_h * 2.7
+        dist = frame_h * (3.2 if bpy.context.scene.get("prop") else 2.7)
         # JK models face +Y: the camera sits in front (+Y) looking back at them
         cam.location = frame_ctr + Vector((math.sin(a) * dist, math.cos(a) * dist, frame_h * 0.08))
         cam.rotation_euler = (frame_ctr - cam.location).to_track_quat("-Z", "Y").to_euler()
@@ -110,11 +133,14 @@ def shoot(prefix, ctr, h, frame_ctr, frame_h):
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:]
     orig, orig_mats, new, new_mats, hd_dir, cmp, out = argv[:7]
+    prop = "--prop" in argv
     addon_utils.enable("bl_ext.user_default.sith", default_set=True)
     os.makedirs(os.path.dirname(out), exist_ok=True)
 
     # Frame both on the original's box so sizes compare honestly.
     objs = import_model(orig, [orig_mats], cmp)
+    if prop:
+        stand_up(objs)
     set_images(objs, None, nearest=True)
     ctr, h = setup_scene(objs)
     shoot(out + "_orig", ctr, h, ctr, h)
@@ -123,6 +149,8 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     addon_utils.enable("bl_ext.user_default.sith", default_set=True)
     objs = import_model(new, [new_mats, orig_mats], cmp)
+    if prop:
+        stand_up(objs)
     # kept original parts (weapons) find their MATs in the original folder
     set_images(objs, hd_dir, nearest=True)
     setup_scene(objs)

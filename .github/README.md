@@ -78,7 +78,9 @@ That breaks down into concrete engine work:
 - [x] Blender tools: the community [blender-sith](https://github.com/smlu/blender-sith) add-on, tested on Kyle and the stormtrooper (model and animation in and out of Blender 5.3, identical in game)
 - [x] Tool to pull any model, animation or texture out of the game archives (`tools/gob_extract.py`)
 - [x] Engine limits mapped: 512 vertices and 512 faces per body part, 64 joints
-- [ ] Raise the per-part limits for detailed models
+- [x] Raise the per-part limits for detailed models (8192 vertices per mesh)
+- [x] Skinning: one continuous mesh bends with the original skeleton, so every original animation drives modern characters (tested pixel-identical)
+- [ ] Fit Jedi Academy's Kyle and stormtrooper (skinned, about 2,900 triangles) onto JK's skeleton
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper
 - [ ] New lightsaber
@@ -87,7 +89,7 @@ That breaks down into concrete engine work:
 
 - [x] Extract all 25 cutscenes (640x300, 15 fps, 33 minutes) to ProRes for upscaling and grading (`scripts/extract_cutscenes.sh`)
 - [x] Engine plays HD replacements (H.264, HEVC or ProRes, any resolution or frame rate) in place of the originals, with the originals as fallback and subtitles kept
-- [ ] Upscale, interpolate to 23.976 fps and grade all 25
+- [ ] Upscale (2x, 1280x600, original 15 fps: interpolation looked janky) and grade all 25
 - [ ] Playtest every cutscene in game
 
 ## Latest

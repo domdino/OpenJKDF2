@@ -14,7 +14,7 @@ rdModel3_aLocalLightPos 0x0073A698 rdVector3[64] NO_REINIT
 rdModel3_aLocalLightDir 0x0 rdVector3[64] NO_REINIT
 meshFrustumCull 0x0073A998 int
 curTextureMode 0x0073A99C int
-aView 0x0073A9A0 rdVector3[512] NO_REINIT
+aView 0x0073A9A0 rdVector3[8192] NO_REINIT
 pCurMesh 0x0073C1A0 rdMesh*
 thingFrustumCull 0x0073C1A4 int
 vertexSrc 0x0073C1A8 rdMeshinfo

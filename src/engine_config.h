@@ -246,6 +246,12 @@
 #define RDPUPPET_MAX_TRACKS (4)
 #define RDPUPPET_MAX_NODES (64)
 
+// Added (remaster): per-mesh limits for detailed models (were 0x200 vertices, 0x300 UVs,
+// 0x200 faces). The model transform buffer aView (symbols.syms) is sized to match.
+#define RDMODEL3_MAX_MESH_VERTICES (0x2000)
+#define RDMODEL3_MAX_MESH_UVS (0x4000)
+#define RDMODEL3_MAX_MESH_FACES (0x2000)
+
 #ifdef SDL2_RENDER
 #define JOYSTICK_MAX_STRS (6)
 #else

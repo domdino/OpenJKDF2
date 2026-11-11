@@ -116,6 +116,28 @@ typedef struct rdModel3
     rdVector3 insertOffset;
 } rdModel3;
 
+// Added (remaster): skinned meshes. A mesh listed in <model>.skn is bent every frame by up
+// to RDSKIN_MAX_INFLUENCES hierarchy nodes per vertex instead of following only its own node,
+// so continuous modern meshes animate with the original KEY files. Vertices are stored in the
+// mesh's own node space at the model's rest pose, like any other 3DO mesh.
+#define RDSKIN_MAX_INFLUENCES (4)
+typedef struct rdSkin
+{
+    int meshNode;              // hierarchy node the mesh hangs from
+    int numVertices;
+    int numFaces;
+    int* aNodes;               // numVertices * RDSKIN_MAX_INFLUENCES, -1 = unused
+    flex_t* aWeights;          // numVertices * RDSKIN_MAX_INFLUENCES
+    rdVector3* aRestVertices;  // the mesh's own arrays, kept while skinned copies are swapped in
+    rdVector3* aRestNormals;
+    rdVector3* aRestFaceNormals;
+    rdVector3* aSkinned;
+    rdVector3* aSkinnedNormals;
+    int numNodes;
+    rdMatrix34* aBindToNode;   // per node: inverse(rest_j) * rest_meshNode
+    int bBindReady;
+} rdSkin;
+
 #ifndef JKM_TYPES
 typedef struct rdMesh
 {
@@ -151,6 +173,7 @@ typedef struct rdMesh
 #ifdef RDMODEL3_POOLED_FACE_INDICES
     int* paFaceIdxPool; // Added: pooled face vertex/UV indices
 #endif
+    struct rdSkin* pSkin; // Added (remaster): skin weights from <model>.skn, NULL for rigid meshes
 } rdMesh;
 #else
 
@@ -185,6 +208,7 @@ typedef struct rdMesh
 #ifdef RDMODEL3_POOLED_FACE_INDICES
     int* paFaceIdxPool; // Added: pooled face vertex/UV indices
 #endif
+    struct rdSkin* pSkin; // Added (remaster): skin weights from <model>.skn, NULL for rigid meshes
 } rdMesh;
 #endif
 

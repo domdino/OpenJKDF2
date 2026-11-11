@@ -378,3 +378,23 @@ So a modern Kyle (say 10-20k triangles over 16 parts, 600-1250 per part) needs t
   - **Export the model in rest pose**: exporting after loading an animation saves the current pose as the rest pose.
 - **In game**: loose files in the game folder override the GOBs (`3do/ky.3do` next to `Episode/`), so a test needs no GOB packing. The round-tripped Kyle loaded and rendered identically in a third-person capture (docs/screenshots/stage4-blender-roundtrip-kyle.png). Captures gained `CAPTURE_CAMERA=1` for third person.
 - **Not installed into Dom's Blender automatically**: 5.3 had never been launched, and creating its settings folder headless would stop Blender offering to import the 4.5 settings on first launch.
+
+**Frame rate (Dom, after a test batch):** frame interpolation to 23.976 looked janky on this footage, so HD cutscenes keep the original 15 fps and are just upscaled (Topaz, 2x to 1280x600). The engine supports either; the import tool doesn't care.
+
+## 2026-11-11 - Stage 4: skinning in the engine
+
+Dom approved adding skinning so modern rigged characters (bought, or from Jedi Outcast / Jedi Academy) can be used whole instead of chopped into rigid parts.
+
+**Format: `<model>.skn` next to the `.3do`** (e.g. `3do/ky.skn`), text:
+```
+SKIN 1
+MESH <geoset> <mesh> <numVertices>
+<vertex>: <count> <node> <weight> [<node> <weight> ...]
+```
+The .3do stays a normal 3DO 2.1 file (a skinned mesh is just a mesh on a hierarchy node, vertices in that node's space at the rest pose), so old tools and engines still open it as a static mesh. Up to 4 influences per vertex, normalised on load. Meshes not listed stay rigid, so rigid and skinned parts can mix.
+
+**Engine** (rdModel3.c): on load, the .skn is read if present. At draw time a skinned mesh is bent before the normal mesh code runs: for each node j, K_j = inverse(current mesh node) x current node j x inverse(rest node j) x rest mesh node, using the same joint matrices the KEY animations produce and the same accumulate maths (pivots included) for the rest pose. Positions, vertex normals and face normals are swapped for bent copies during the draw and restored afterwards, so lighting, per-pixel shading, reflections, HD textures and material maps all work unchanged. Every existing KEY animation drives skinned meshes with no changes.
+
+**Limits raised** for detailed models: 8192 vertices, 16384 UVs and 8192 faces per mesh (were 512/768/512); the shared transform buffer `aView` grows to match (symbols.syms).
+
+**Test**: `tools/make_skinned_test.py` merges Kyle's 16 rigid parts into one mesh on the root node, each vertex weighted 100% to its old node. In game it is pixel-identical to the original (mean difference 0.02/255); the control (same mesh, no .skn) stands frozen in rest pose (difference 6.5/255), so the match is real skinning. docs/screenshots/stage4-skinning-test.png. `tools/jk3do.py` reads/writes .3do and reproduces the engine's rest-pose maths in Python.

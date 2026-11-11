@@ -74,6 +74,225 @@ rdModel3* rdModel3_Load(char *pName)
 #define rdModel3_HelpDebug(s, ...) (s)
 
 // MOTS altered (RGB aLights?)
+// ---------------------------------------------------------------- Added (remaster): skinning
+//
+// <model>.skn, next to the .3do (e.g. 3do\ky.skn), text:
+//   SKIN 1
+//   MESH <geoset> <mesh> <numVertices>
+//   <vertex>: <count> <node> <weight> [<node> <weight> ...]     (one line per vertex, up to 4)
+//   ... more MESH blocks ...
+// Weights are normalised on load. Meshes not listed stay rigid.
+
+static void rdModel3_FreeSkin(rdMesh* pMesh)
+{
+    rdSkin* pSkin = pMesh->pSkin;
+    if (!pSkin) return;
+    if (pSkin->aNodes) RDROID_FREE(pSkin->aNodes);
+    if (pSkin->aWeights) RDROID_FREE(pSkin->aWeights);
+    if (pSkin->aRestFaceNormals) RDROID_FREE(pSkin->aRestFaceNormals);
+    if (pSkin->aSkinned) RDROID_FREE(pSkin->aSkinned);
+    if (pSkin->aSkinnedNormals) RDROID_FREE(pSkin->aSkinnedNormals);
+    if (pSkin->aBindToNode) RDROID_FREE(pSkin->aBindToNode);
+    RDROID_FREE(pSkin);
+    pMesh->pSkin = NULL;
+}
+
+static void rdModel3_LoadSkin(const char* pModelPath, rdModel3* pModel3)
+{
+    char path[128];
+    stdString_SafeStrCopy(path, pModelPath, sizeof(path) - 4);
+    char* dot = strrchr(path, '.');
+    if (!dot) return;
+    strcpy(dot, ".skn");
+
+    stdFile_t fd = rdroid_g_pHS->fileOpen(path, "r");
+    if (!fd) return;
+    rdroid_g_pHS->fileClose(fd);
+    if (!stdConffile_Open(path)) return;
+
+    int numSkinned = 0, version = 0;
+    if (!stdConffile_ReadLine() || _sscanf(stdConffile_g_aLine, " skin %d", &version) != 1) {
+        stdPlatform_Printf("rdModel3: %s: bad header\n", path);
+        stdConffile_Close();
+        return;
+    }
+    while (stdConffile_ReadLine())
+    {
+        int geo, meshIdx, numVerts;
+        if (_sscanf(stdConffile_g_aLine, " mesh %d %d %d", &geo, &meshIdx, &numVerts) != 3) continue;
+        if (geo < 0 || geo >= (int)pModel3->numGeos || meshIdx < 0 || meshIdx >= (int)pModel3->aGeos[geo].numMeshes) {
+            stdPlatform_Printf("rdModel3: %s: no mesh %d in geoset %d\n", path, meshIdx, geo);
+            break;
+        }
+        rdMesh* pMesh = &pModel3->aGeos[geo].aMeshes[meshIdx];
+        if (numVerts != pMesh->numVertices) {
+            stdPlatform_Printf("rdModel3: %s: mesh %s has %d vertices, skin has %d\n", path, pMesh->name, pMesh->numVertices, numVerts);
+            break;
+        }
+        rdModel3_FreeSkin(pMesh);
+        rdSkin* pSkin = (rdSkin*)RDROID_ALLOC(sizeof(rdSkin));
+        memset(pSkin, 0, sizeof(*pSkin));
+        pSkin->numVertices = numVerts;
+        pSkin->numFaces = pMesh->numFaces;
+        pSkin->meshNode = -1;
+        for (int n = 0; n < (int)pModel3->numHNodes; n++) {
+            if (pModel3->aHierarchyNodes[n].meshIdx == meshIdx) { pSkin->meshNode = n; break; }
+        }
+        pSkin->numNodes = pModel3->numHNodes;
+        pSkin->aNodes = (int*)RDROID_ALLOC(sizeof(int) * numVerts * RDSKIN_MAX_INFLUENCES);
+        pSkin->aWeights = (flex_t*)RDROID_ALLOC(sizeof(flex_t) * numVerts * RDSKIN_MAX_INFLUENCES);
+        pSkin->aRestFaceNormals = (rdVector3*)RDROID_ALLOC(sizeof(rdVector3) * (pMesh->numFaces ? pMesh->numFaces : 1));
+        pSkin->aSkinned = (rdVector3*)RDROID_ALLOC(sizeof(rdVector3) * numVerts);
+        pSkin->aSkinnedNormals = (rdVector3*)RDROID_ALLOC(sizeof(rdVector3) * numVerts);
+        pSkin->aBindToNode = (rdMatrix34*)RDROID_ALLOC(sizeof(rdMatrix34) * pSkin->numNodes);
+        for (int i = 0; i < numVerts * RDSKIN_MAX_INFLUENCES; i++) { pSkin->aNodes[i] = -1; pSkin->aWeights[i] = 0; }
+
+        int ok = 1;
+        for (int v = 0; v < numVerts; v++)
+        {
+            if (!stdConffile_ReadLine()) { ok = 0; break; }
+            int idx, cnt, consumed = 0;
+            const char* p = stdConffile_g_aLine;
+            if (_sscanf(p, " %d: %d%n", &idx, &cnt, &consumed) != 2 || idx != v) { ok = 0; break; }
+            p += consumed;
+            flex_t total = 0;
+            for (int k = 0; k < cnt; k++) {
+                int node; float w;
+                if (_sscanf(p, " %d %f%n", &node, &w, &consumed) != 2) { ok = 0; break; }
+                p += consumed;
+                if (k >= RDSKIN_MAX_INFLUENCES || node < 0 || node >= pSkin->numNodes || w <= 0) continue;
+                pSkin->aNodes[v * RDSKIN_MAX_INFLUENCES + k] = node;
+                pSkin->aWeights[v * RDSKIN_MAX_INFLUENCES + k] = w;
+                total += w;
+            }
+            if (!ok) break;
+            if (total <= 0) {
+                pSkin->aNodes[v * RDSKIN_MAX_INFLUENCES] = pSkin->meshNode;
+                pSkin->aWeights[v * RDSKIN_MAX_INFLUENCES] = 1;
+                total = 1;
+            }
+            for (int k = 0; k < RDSKIN_MAX_INFLUENCES; k++) pSkin->aWeights[v * RDSKIN_MAX_INFLUENCES + k] /= total;
+        }
+        if (!ok || pSkin->meshNode < 0) {
+            stdPlatform_Printf("rdModel3: %s: bad weights for mesh %s\n", path, pMesh->name);
+            pMesh->pSkin = pSkin;
+            rdModel3_FreeSkin(pMesh);
+            break;
+        }
+        pMesh->pSkin = pSkin;
+        // A skinned mesh moves away from its node, so cull with a generous radius.
+        pMesh->radius *= 3.0f;
+        numSkinned++;
+    }
+    stdConffile_Close();
+    if (numSkinned)
+        stdPlatform_Printf("rdModel3: %s: %d skinned mesh(es)\n", path, numSkinned);
+}
+
+static void rdModel3_SkinAccumulateRest(rdModel3* pModel, rdHierarchyNode* pNode, const rdMatrix34* pParent, rdMatrix34* aOut)
+{
+    rdMatrix34 matrix;
+    rdVector3 negPivot;
+    rdMatrix_BuildTranslate34(&matrix, &pNode->pivot);
+    rdMatrix_PostMultiply34(&matrix, &pNode->posRotMatrix);
+    if (pNode->parent) {
+        rdVector_Neg3(&negPivot, &pNode->parent->pivot);
+        rdMatrix_PostTranslate34(&matrix, &negPivot);
+    }
+    rdMatrix_Multiply34(&aOut[pNode->idx], pParent, &matrix);
+    rdHierarchyNode* child = pNode->child;
+    for (int i = 0; i < pNode->numChildren && child; i++) {
+        rdModel3_SkinAccumulateRest(pModel, child, &aOut[pNode->idx], aOut);
+        child = child->nextSibling;
+    }
+}
+
+// Same maths as rdThing_AccumulateMatrices, at the rest pose with no placement.
+static void rdModel3_SkinBuildBind(rdModel3* pModel, rdSkin* pSkin)
+{
+    rdMatrix34* aRest = (rdMatrix34*)RDROID_ALLOC(sizeof(rdMatrix34) * pSkin->numNodes);
+    rdMatrix34 ident, inv;
+    rdMatrix_Identity34(&ident);
+    for (int i = 0; i < pSkin->numNodes; i++) rdMatrix_Identity34(&aRest[i]);
+    rdModel3_SkinAccumulateRest(pModel, pModel->aHierarchyNodes, &ident, aRest);
+    for (int j = 0; j < pSkin->numNodes; j++) {
+        rdMatrix_InvertOrtho34(&inv, &aRest[j]);
+        rdMatrix_Multiply34(&pSkin->aBindToNode[j], &inv, &aRest[pSkin->meshNode]);
+    }
+    RDROID_FREE(aRest);
+    pSkin->bBindReady = 1;
+}
+
+// Bends the mesh into its current pose, in the space of its own node (so everything after
+// this in rdModel3_DrawMesh is unchanged), and swaps the bent arrays in until the draw ends.
+static void rdModel3_SkinBegin(rdMesh* pMesh, const rdMatrix34* pOrient)
+{
+    rdSkin* pSkin = pMesh->pSkin;
+    rdModel3* pModel = pCurThing->model3;
+    if (!pSkin->bBindReady) rdModel3_SkinBuildBind(pModel, pSkin);
+
+    rdMatrix34 invOrient, tmp;
+    rdMatrix34 aK[RDPUPPET_MAX_NODES];
+    rdMatrix_InvertOrtho34(&invOrient, pOrient);
+    int numNodes = pSkin->numNodes < RDPUPPET_MAX_NODES ? pSkin->numNodes : RDPUPPET_MAX_NODES;
+    for (int j = 0; j < numNodes; j++) {
+        rdMatrix_Multiply34(&tmp, &pCurThing->paJointMatrices[j], &pSkin->aBindToNode[j]);
+        rdMatrix_Multiply34(&aK[j], &invOrient, &tmp);
+    }
+
+    pSkin->aRestVertices = pMesh->aVertices;
+    pSkin->aRestNormals = pMesh->vertexNormals;
+    for (int v = 0; v < pSkin->numVertices; v++) {
+        rdVector3 p = {0, 0, 0}, n = {0, 0, 0}, t;
+        for (int k = 0; k < RDSKIN_MAX_INFLUENCES; k++) {
+            int node = pSkin->aNodes[v * RDSKIN_MAX_INFLUENCES + k];
+            if (node < 0 || node >= numNodes) continue;
+            flex_t w = pSkin->aWeights[v * RDSKIN_MAX_INFLUENCES + k];
+            rdMatrix_TransformPoint34(&t, &pSkin->aRestVertices[v], &aK[node]);
+            p.x += t.x * w; p.y += t.y * w; p.z += t.z * w;
+            if (pSkin->aRestNormals) {
+                rdMatrix_TransformVector34(&t, &pSkin->aRestNormals[v], &aK[node]);
+                n.x += t.x * w; n.y += t.y * w; n.z += t.z * w;
+            }
+        }
+        pSkin->aSkinned[v] = p;
+        rdVector_Normalize3Acc(&n);
+        pSkin->aSkinnedNormals[v] = n;
+    }
+    pMesh->aVertices = pSkin->aSkinned;
+    if (pSkin->aRestNormals) pMesh->vertexNormals = pSkin->aSkinnedNormals;
+
+    for (int f = 0; f < pMesh->numFaces; f++) {
+        rdFace* face = &pMesh->faces[f];
+        pSkin->aRestFaceNormals[f] = face->normal;
+        if (face->numVertices < 3) continue;
+        // New normal from the bent triangle, oriented like the rest normal carried along by the
+        // first vertex's strongest node (the winding convention then doesn't matter).
+        rdVector3 a, b, nrm, ref;
+        int v0 = face->vertexPosIdx[0];
+        rdVector_Sub3(&a, &pMesh->aVertices[face->vertexPosIdx[1]], &pMesh->aVertices[v0]);
+        rdVector_Sub3(&b, &pMesh->aVertices[face->vertexPosIdx[2]], &pMesh->aVertices[v0]);
+        rdVector_Cross3(&nrm, &a, &b);
+        int node = pSkin->aNodes[v0 * RDSKIN_MAX_INFLUENCES];
+        if (node < 0 || node >= numNodes) node = pSkin->meshNode;
+        rdMatrix_TransformVector34(&ref, &pSkin->aRestFaceNormals[f], &aK[node]);
+        if (rdVector_Normalize3Acc(&nrm) > 0) {
+            if (nrm.x * ref.x + nrm.y * ref.y + nrm.z * ref.z < 0) rdVector_Neg3Acc(&nrm);
+            face->normal = nrm;
+        }
+        else face->normal = ref;
+    }
+}
+
+static void rdModel3_SkinEnd(rdMesh* pMesh)
+{
+    rdSkin* pSkin = pMesh->pSkin;
+    pMesh->aVertices = pSkin->aRestVertices;
+    pMesh->vertexNormals = pSkin->aRestNormals;
+    for (int f = 0; f < pMesh->numFaces; f++) pMesh->faces[f].normal = pSkin->aRestFaceNormals[f];
+}
+// ---------------------------------------------------------------- end skinning
+
 int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
 {
     rdMesh *mesh; // ebx
@@ -267,7 +486,7 @@ int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
               || _sscanf(stdConffile_g_aLine, " texturemode %d", &mesh->textureMode) != 1
               || !stdConffile_ReadLine()
               || _sscanf(stdConffile_g_aLine, " vertices %d", &mesh->numVertices) != 1
-              || mesh->numVertices > 0x200 )
+              || mesh->numVertices > RDMODEL3_MAX_MESH_VERTICES ) // Added (remaster): was 0x200
             {
                 rdModel3_HelpDebug("OpenJKDF2: %s: Failed to parse radius, render modes, vertices %s\n", __func__, stdConffile_g_aLine); // Added
                 goto fail;
@@ -329,7 +548,7 @@ int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
 
             if ( !stdConffile_ReadLine()
               || _sscanf(stdConffile_g_aLine, " texture vertices %d", &mesh->numUVs) != 1
-              || mesh->numUVs > 0x300 )
+              || mesh->numUVs > RDMODEL3_MAX_MESH_UVS ) // Added (remaster): was 0x300
             {
                 rdModel3_HelpDebug("OpenJKDF2: %s: Failed to parse texture vertices %s\n", __func__, stdConffile_g_aLine); // Added
                 goto fail;
@@ -396,7 +615,7 @@ int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
 
             if ( !stdConffile_ReadLine()
               || _sscanf(stdConffile_g_aLine, " faces %d", &mesh->numFaces) != 1
-              || mesh->numFaces > 0x200 )
+              || mesh->numFaces > RDMODEL3_MAX_MESH_FACES ) // Added (remaster): was 0x200
             {
                 goto fail;
             }
@@ -663,6 +882,7 @@ int rdModel3_LoadEntry(char *pFilename, rdModel3 *pModel3)
     rdModel3_CalcNumParents(pModel3); // MOTS added
 
     stdConffile_Close();
+    rdModel3_LoadSkin(pFilename, pModel3); // Added (remaster): optional <model>.skn
     return 1;
 
 fail:
@@ -965,6 +1185,7 @@ void rdModel3_FreeEntry(rdModel3 *pModel3)
                 RDROID_FREE(mesh->vertices_unk);
             if (mesh->vertexNormals)
                 RDROID_FREE(mesh->vertexNormals);
+            rdModel3_FreeSkin(mesh); // Added (remaster)
         }
         if ( geoset->aMeshes )
             RDROID_FREE(geoset->aMeshes);
@@ -1525,6 +1746,8 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
         return;
     }
 
+    if (pMesh->pSkin && pCurThing && pCurThing->paJointMatrices) // Added (remaster): bend skinned meshes
+        rdModel3_SkinBegin(pMesh, orient);
     rdMatrix_Multiply34(&out, &rdCamera_g_pCurCamera->orient, orient);
     rdMatrix_TransformPointList34(&out, pCurMesh->aVertices, aView, pCurMesh->numVertices);
     rdMatrix_InvertOrtho34(&matInv, orient);
@@ -1685,6 +1908,9 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
         rdModel3_DrawFace(face, flags);
         ++face;
     }
+
+    if (pMesh->pSkin && pMesh->aVertices == pMesh->pSkin->aSkinned) // Added (remaster)
+        rdModel3_SkinEnd(pMesh);
 }
 
 // MOTS altered (RGB aLights)

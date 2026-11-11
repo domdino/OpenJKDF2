@@ -367,3 +367,14 @@ Not yet checked: playing a full cutscene with sound end to end in a real session
 | Render cache | 1024 faces per flush | Not a limit: flushes and continues, costs draw calls |
 
 So a modern Kyle (say 10-20k triangles over 16 parts, 600-1250 per part) needs the per-mesh limits raised to a few thousand. That's a small change (loader checks plus the `aView` buffer), to do when the first new model exists to test it with. HD textures for models already work through the Stage 3 loader (models use MATs like walls).
+
+## 2026-11-11 - Stage 4: Blender round trip works
+
+- **Add-on build**: blender-sith at commit 01ff4bd (2026-11-05), built with its own `scripts/make_addon.py` to `USEFUL STUFF/blender-sith-01ff4bd/sith.zip` (outside the repo: GPL third-party code). Newer than the Feb release (rc4) and has the KEY export fixes.
+- **Extract**: `python3 tools/gob_extract.py hd/models_src ky.3do st.3do 'ky*.key' 'st*.key' --with-mats` pulls models, animations, every MAT they use and dflt.cmp into hd/models_src (gitignored), in the GOB's folder layout so the add-on finds the textures.
+- **Round trip, headless** (Blender 5.3 in background mode, throwaway profile): Kyle and the stormtrooper import with all 16 parts, 202/195 vertices, 241/208 faces and their textures; kyrun0.key and strun.key import (192/126 frames, 15 fps) and export.
+  - 3DO export matches the original rest pose to float precision. Differences: only the top detail level is exported (1 geoset instead of 4, fine for the engine), meshes are renumbered, and mesh pivots are folded into the vertices (same result on screen).
+  - KEY export matches value for value, plus one extra end key; frame numbers are written as decimals, which the engine reads with `%f`.
+  - **Export the model in rest pose**: exporting after loading an animation saves the current pose as the rest pose.
+- **In game**: loose files in the game folder override the GOBs (`3do/ky.3do` next to `Episode/`), so a test needs no GOB packing. The round-tripped Kyle loaded and rendered identically in a third-person capture (docs/screenshots/stage4-blender-roundtrip-kyle.png). Captures gained `CAPTURE_CAMERA=1` for third person.
+- **Not installed into Dom's Blender automatically**: 5.3 had never been launched, and creating its settings folder headless would stop Blender offering to import the 4.5 settings on first launch.

@@ -4,6 +4,7 @@
 #include "General/stdString.h"
 #include "World/sithWorld.h"
 #include "Main/sithCommand.h"
+#include "Engine/sithCamera.h"
 #include "Main/sithCvar.h"
 #include "Primitives/rdMatrix.h"
 #include "Primitives/rdVector.h"
@@ -1532,6 +1533,9 @@ static void Window_DevCaptureTick(void)
                 if (pWarp && pWarp[0]) sithCommand_Warp(NULL, pWarp);
                 rdVector_Zero3(&pPlayer->actorParams.headPYR);
             }
+            // OPENJKDF2_CAPTURE_CAMERA=N: cycle the camera N times (1 = third person, to see Kyle).
+            const char* pCam = getenv("OPENJKDF2_CAPTURE_CAMERA");
+            for (int c = pCam ? atoi(pCam) : 0; c > 0; c--) sithCamera_CycleCamera();
             tLast = now;
             frameIdx = 0;
             state = 2;

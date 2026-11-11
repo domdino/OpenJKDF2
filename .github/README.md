@@ -39,7 +39,7 @@ That breaks down into concrete engine work:
 | 1 | Native build on Apple Silicon, one-command build and run | Done |
 | 2 | Rendering: Retina, filtering, colour grading, per-pixel lighting, atmosphere | In progress |
 | 3 | HD textures with material maps, true-colour replacement loader | In progress |
-| 4 | Models: Blender import/export for .3DO and .KEY, new Kyle and stormtroopers | Not started |
+| 4 | Models: Blender import/export for .3DO and .KEY, new Kyle and stormtroopers | In progress |
 | 5 | Cutscenes: upscaled and graded, played from modern video files | In progress |
 | 6 | Mysteries of the Sith: the same treatment for the expansion | Not started |
 
@@ -72,6 +72,16 @@ That breaks down into concrete engine work:
 - [ ] First full Texture God batch in game
 - [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
 - [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
+
+### Stage 4 checklist
+
+- [x] Blender tools: the community [blender-sith](https://github.com/smlu/blender-sith) add-on, tested on Kyle and the stormtrooper (model and animation in and out of Blender 5.3, identical in game)
+- [x] Tool to pull any model, animation or texture out of the game archives (`tools/gob_extract.py`)
+- [x] Engine limits mapped: 512 vertices and 512 faces per body part, 64 joints
+- [ ] Raise the per-part limits for detailed models
+- [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
+- [ ] New stormtrooper
+- [ ] New lightsaber
 
 ### Stage 5 checklist
 

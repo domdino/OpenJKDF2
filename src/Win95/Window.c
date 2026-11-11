@@ -6,6 +6,7 @@
 #include "Main/sithCommand.h"
 #include "Main/sithCvar.h"
 #include "Primitives/rdMatrix.h"
+#include "Primitives/rdVector.h"
 
 #include "Win95/stdGdi.h"
 #include "Platform/std3D.h"
@@ -438,8 +439,22 @@ static void Window_TranslateMouseToCanvas(int rawX, int rawY, int* pOutX, int* p
         *pOutX = 0;
 }
 
+// Added (remaster): true when running a scripted capture (OPENJKDF2_CAPTURE set).
+int Window_IsDevCapture(void)
+{
+    static int bCaptureMode = -1;
+    if (bCaptureMode < 0) {
+        const char* pCap = getenv("OPENJKDF2_CAPTURE");
+        bCaptureMode = (pCap && pCap[0]) ? 1 : 0;
+    }
+    return bCaptureMode;
+}
+
 void Window_HandleMouseMove(SDL_MouseMotionEvent *event)
 {
+    // Added (remaster): capture runs ignore the mouse so a stray cursor can't move the view.
+    if (Window_IsDevCapture()) return;
+
     int x = (int)event->x;
     int y = (int)event->y;
 
@@ -1489,6 +1504,14 @@ static void Window_DevCaptureTick(void)
 
     if (state == 1) {
         if (now - tMark >= delayNs) {
+            // Re-place the camera just before timing so every run frames the same view:
+            // warp (if given) and level the head pitch.
+            SithThing* pPlayer = sithWorld_g_pCurrentWorld ? sithWorld_g_pCurrentWorld->pLocalPlayer : NULL;
+            if (pPlayer) {
+                const char* pWarp = getenv("OPENJKDF2_CAPTURE_WARP");
+                if (pWarp && pWarp[0]) sithCommand_Warp(NULL, pWarp);
+                rdVector_Zero3(&pPlayer->actorParams.headPYR);
+            }
             tLast = now;
             frameIdx = 0;
             state = 2;
@@ -1640,6 +1663,11 @@ void Window_RecreateSDL2Window()
     flags = SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #endif
 
+    // Added (remaster): capture runs never show a window; rendering goes to an
+    // offscreen framebuffer instead (see std3D init_resources).
+    if (Window_IsDevCapture())
+        flags |= SDL_WINDOW_HIDDEN;
+
     // SDL3 SDL_CreateWindow() dropped the x/y position params; position is set
     // separately below via SDL_SetWindowPosition() on desktop.
 #ifdef ARCH_WASM
@@ -1661,8 +1689,10 @@ void Window_RecreateSDL2Window()
     SDL_SetWindowPosition(displayWindow, Window_xPos, Window_yPos);
 #endif
 
-    SDL_SetWindowFullscreen(displayWindow, Window_isFullscreen ? true : false);
-    SDL_RaiseWindow(displayWindow);
+    if (!Window_IsDevCapture()) { // Added (remaster): capture runs stay hidden and unfocused
+        SDL_SetWindowFullscreen(displayWindow, Window_isFullscreen ? true : false);
+        SDL_RaiseWindow(displayWindow);
+    }
 
 #ifdef TARGET_IOS
     if (!iosAngle_CreateContext(displayWindow))

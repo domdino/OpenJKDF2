@@ -503,6 +503,36 @@ int init_resources()
 
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &std3D_windowFbo);
 
+    // Added (remaster): capture runs use a hidden window, which has no visible drawable on
+    // macOS, so everything that would go to the window goes to an offscreen buffer instead.
+    // Screenshots read from it the same way.
+    if (Window_IsDevCapture())
+    {
+        static GLuint captureFbo = 0, captureTex = 0, captureRbo = 0;
+        if (captureFbo) {
+            glDeleteFramebuffers(1, &captureFbo);
+            glDeleteTextures(1, &captureTex);
+            glDeleteRenderbuffers(1, &captureRbo);
+        }
+        glGenFramebuffers(1, &captureFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, captureFbo);
+        glGenTextures(1, &captureTex);
+        glBindTexture(GL_TEXTURE_2D, captureTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, Window_xSize, Window_ySize, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, captureTex, 0);
+        glGenRenderbuffers(1, &captureRbo);
+        glBindRenderbuffer(GL_RENDERBUFFER, captureRbo);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, Window_xSize, Window_ySize);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, captureRbo);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            stdPlatform_Printf("std3D: ERROR, capture framebuffer is incomplete!\n");
+        std3D_windowFbo = (GLint)captureFbo;
+        stdPlatform_Printf("std3D: capture mode, rendering offscreen at %dx%d\n", Window_xSize, Window_ySize);
+    }
+
     int32_t tex_w = Window_xSize;
     int32_t tex_h = Window_ySize;
 

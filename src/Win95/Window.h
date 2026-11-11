@@ -77,6 +77,7 @@ void Window_SdlUpdate();
 void Window_SdlUpdateModal(); // Added (DroidWorks): pump one frame from a nested modal loop
 void Window_SdlVblank();
 void Window_DevCaptureApplySettings(void); // Added (remaster): capture-mode display settings
+int Window_IsDevCapture(void); // Added (remaster): scripted capture run in progress
 void Window_RecreateSDL2Window();
 #endif
 

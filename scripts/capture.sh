@@ -1,7 +1,7 @@
 #!/bin/sh
 # Scripted before/after capture: loads a level, freezes the AI, waits for it to
-# settle, times frames, saves a PNG and quits. The game window pops up while it
-# runs (muted). Don't touch the mouse or the view will move.
+# settle, times frames, saves a PNG and quits. Fully silent: no visible window,
+# no Dock icon, no focus stealing (renders offscreen) and no sound.
 #
 # Usage: scripts/capture.sh NAME [setting=value ...]
 #   NAME            output name, e.g. bloom-on (keep it short)
@@ -40,16 +40,26 @@ for item in JK.EXE Episode Resource MUSIC; do
 done
 [ -e "$CAPROOT/grade" ] || ln -s "$ROOT/grade" "$CAPROOT/grade"
 
+# Default camera for level 1: the spawn room, facing the green sign (same room as
+# the north star frame). Other maps start wherever the level puts the player.
+WARP="${CAPTURE_WARP:-}"
+if [ -z "$WARP" ] && [ "${CAPTURE_MAP:-01narshadda.jkl}" = "01narshadda.jkl" ]; then
+    WARP="-10.4434 -5.4551 -1.1299 0 -59.98 0"
+fi
+
 BASELINE="hidpi=1 fullscreen=0 r_enableVsync=0 r_fpslimit=0 r_enableBloom=0 r_enableSSAO=0 r_ssaaMultiple=1 r_enableTextureFilter=0 r_enableGrade=0"
 
 # Muted: OpenAL Soft (sound effects) and SDL audio (music, cutscenes) both get
-# silent drivers. "script" gives the engine a tty so its log isn't buffered.
+# silent drivers. SDL_MAC_BACKGROUND_APP keeps it out of the Dock and from taking
+# focus; the engine hides its window in capture mode. "script" gives the engine a
+# tty so its log isn't buffered.
 ALSOFT_DRIVERS=null \
 SDL_AUDIO_DRIVER=dummy \
+SDL_MAC_BACKGROUND_APP=1 \
 OPENJKDF2_ROOT="$CAPROOT" \
 OPENJKDF2_CAPTURE="$OUT_DIR/$NAME.png" \
 OPENJKDF2_CAPTURE_CVARS="$BASELINE $*" \
-OPENJKDF2_CAPTURE_WARP="${CAPTURE_WARP:-}" \
+OPENJKDF2_CAPTURE_WARP="$WARP" \
 OPENJKDF2_CAPTURE_DELAY="${CAPTURE_DELAY:-8}" \
 OPENJKDF2_CAPTURE_FRAMES="${CAPTURE_FRAMES:-600}" \
     script -q /dev/null "$BIN" -autostart -sp -episode JK1 -map "${CAPTURE_MAP:-01narshadda.jkl}" \

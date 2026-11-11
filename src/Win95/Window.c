@@ -1319,7 +1319,7 @@ void Window_SdlUpdate()
     {
         // Restore menu mouse position
         if (jkGame_isDDraw != last_jkGame_isDDraw) {
-            SDL_WarpMouseInWindow(displayWindow, Window_menu_mouseX, Window_menu_mouseY);
+            if (!Window_IsDevCapture()) SDL_WarpMouseInWindow(displayWindow, Window_menu_mouseX, Window_menu_mouseY); // Added (remaster): captures never move the cursor
         }
 
         SDL_SetWindowRelativeMouseMode(displayWindow, false);
@@ -1375,7 +1375,7 @@ void Window_SdlUpdate()
 #ifdef QUAKE_CONSOLE
 
         if (jkQuakeConsole_bOpen && jkQuakeConsole_bOpen != last_jkQuakeConsole_bOpen) {
-            SDL_WarpMouseInWindow(displayWindow, Window_menu_mouseX, Window_menu_mouseY);
+            if (!Window_IsDevCapture()) SDL_WarpMouseInWindow(displayWindow, Window_menu_mouseX, Window_menu_mouseY); // Added (remaster): captures never move the cursor
         }
         else if (!jkQuakeConsole_bOpen && jkQuakeConsole_bOpen != last_jkQuakeConsole_bOpen) {
             Window_menu_mouseX = Window_mouseX;
@@ -1390,7 +1390,7 @@ void Window_SdlUpdate()
         }
 
         if (!jkQuakeConsole_bOpen && SDL_GetWindowFlags(displayWindow) & SDL_WINDOW_MOUSE_FOCUS) {
-            SDL_SetWindowRelativeMouseMode(displayWindow, true);
+            SDL_SetWindowRelativeMouseMode(displayWindow, !Window_IsDevCapture()); // Added (remaster): captures never grab the mouse
             //SDL_WarpMouseInWindow(displayWindow, 100, 100);
         }
         else
@@ -1538,9 +1538,9 @@ static void Window_DevCaptureTick(void)
             pos = pPlayerNow->position;
             rdMatrix_ExtractAngles34(&pPlayerNow->orient, &pyr);
         }
-        printf("CAPTURE: frames=%d avg_ms=%.3f avg_fps=%.1f p50_ms=%.3f p99_ms=%.3f max_ms=%.3f size=%dx%d warp=\"%.4f %.4f %.4f %.2f %.2f %.2f\" shot=%s\n",
+        printf("CAPTURE: frames=%d avg_ms=%.3f avg_fps=%.1f p50_ms=%.3f p99_ms=%.3f max_ms=%.3f size=%dx%d mousegrab=%d warp=\"%.4f %.4f %.4f %.2f %.2f %.2f\" shot=%s\n",
                nFrames, avg, avg > 0.0 ? 1000.0 / avg : 0.0, p50, p99, aFrameMs[nFrames - 1],
-               Window_xSize, Window_ySize, (double)pos.x, (double)pos.y, (double)pos.z,
+               Window_xSize, Window_ySize, (int)SDL_GetWindowRelativeMouseMode(displayWindow), (double)pos.x, (double)pos.y, (double)pos.z,
                (double)pyr.x, (double)pyr.y, (double)pyr.z, aPath);
         fflush(stdout);
         tMark = now;

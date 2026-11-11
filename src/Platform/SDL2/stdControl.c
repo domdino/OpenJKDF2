@@ -745,7 +745,7 @@ void stdControl_SetActivation(int a)
         }
     }
 
-    SDL_SetWindowRelativeMouseMode(displayWindow, !!a);
+    SDL_SetWindowRelativeMouseMode(displayWindow, !!a && !Window_IsDevCapture()); // Added (remaster): captures never grab the mouse
 }
 
 static int _cursorState = 0;

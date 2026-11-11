@@ -242,3 +242,20 @@ Console command `remaster 1` turns on the whole Stage 2 look with tuned values; 
 Preset values (in `jkPlayer_aRemasterPreset`, jkPlayer.c): per-pixel lighting on (specular 1, wetness 0.6), reflections on (strength 1), haze on (density 0.08, strength 1), light shafts on (strength 1), grade on with grade/default.cube (the grimy starter), bloom on, SSAO on. Glow lights stay off (experimental). `remaster 0` switches those features off; strengths and the LUT path are left at their defaults.
 
 Result: docs/screenshots/stage2-remaster-preset-off-on.png (top original, bottom preset). Frame rate the same either way at 1280x960 (~147 fps in that run). The 1997 textures are now the most obvious gap; Boc's saber pools may be a touch hot and are the first thing to judge in a playtest.
+
+## 2026-11-11 - Stage 3 start: HD textures
+
+**OpenJKDF2 already has an HD texture loader (jkgm, from JKGFXMOD).** Packs live in `<game data>/jkgm/materials/<pack>/metadata.json` plus PNGs. Each entry has `albedo_map` (colour), optional `emissive_map` (glow), optional `displacement_map` (parallax), tint factors, and says what it replaces either by name (`"replaces": [{"name": "mat/x.mat", "cel": 0}]`) or by `replaces_signatures` (MD5 of the original texture's pixels converted to 16-bit, plus width and height). No normal or roughness maps; those would be our addition later. Loaded textures now get mipmaps and anisotropic filtering (Stage 2 work).
+
+**Extraction tool: `tools/mat_extract.py`.** Reads Res2.gob, Res1hi.gob and JK1.GOB directly (later ones override, like the engine) and writes every cel of every MAT to `hd/extracted/<mat>.cel<N>.png` at full resolution, with `manifest.json`. 1934 MATs, 2155 PNGs, 0 errors, 8 seconds. 8-bit textures use a colormap palette (default `dflt.cmp`; `--cmp` for others; magenta texels are palette entries only meaningful in other levels' colormaps). Pure Python, no dependencies. MAT layout: 76-byte header (magic, revision, type, texinfo count, texture count, 14-word format), 24-byte texinfo records (+16 if bit 8 set), then per texture a 24-byte header (width, height, alpha, 2 unknown, mips) and all mip levels.
+
+**Jedi Knight Remastered 3.3 pack.** Its installer isn't Inno Setup; 7-Zip (`brew install sevenzip`, `7zz x -t#`) splits it into 1391 raw chunks: bzip2 streams, plus zlib streams behind a 0x01 marker byte. Inside: 1055 PNGs, four jkgm metadata files (the main "Jedi Knight Neural Upscale Pack" with 2010 entries, plus jkgfxext1, saber19, projectile19), and Windows OpenJKDF2 binaries. The PNGs have no names (the file table is encoded somewhere not yet found), and the installer carries fewer images than the metadata lists (1055 vs 2414).
+- `tools/jkgm_rebuild.py` matches unnamed PNGs to metadata entries by comparing 16x16 thumbnails with the original texture each entry replaces (same aspect ratio, each PNG used once). Glow maps only go with an entry whose colour map matched. Entries without a confident match are dropped from the written metadata, so those textures keep their originals.
+- Calibration by eye: error < 0.02 is reliably right; around 0.045 about half are wrong. Cut-off 0.03. Result: 555 entries (607 images, 230 MB) in `hd/jkgm/materials/jk_neural_upscale_pack`, 2 in jkgfxext1.
+- `scripts/build_hd_pack.sh <installer.exe>` redoes the whole thing. `scripts/run.sh` links `hd/jkgm` into the game data; captures use it unless `CAPTURE_HD=0`.
+
+**Result** (docs/screenshots/stage3-hd-pack-off-on.png; top originals, bottom HD; both with `remaster=1` and texture filtering on): the Sarris building panels and Boc's rock wall get real HD detail. The hangar barely changes (few of its textures matched). No load errors, no frame cost.
+
+**Open questions**
+- Where the other ~1360 images are. Possibly in JKR 1.0/2.0.1 (in the Trash, recoverable) or a file table I haven't decoded. Worth checking before upscaling those textures ourselves.
+- The upscale pack is ~2020-era neural upscaling: good detail, but colour only. The grimy wet look needs roughness (and ideally normal) maps, which neither the pack nor the loader has yet.

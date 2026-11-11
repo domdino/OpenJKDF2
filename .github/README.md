@@ -38,7 +38,7 @@ That breaks down into concrete engine work:
 |---|---|---|
 | 1 | Native build on Apple Silicon, one-command build and run | Done |
 | 2 | Rendering: Retina, filtering, colour grading, per-pixel lighting, atmosphere | In progress |
-| 3 | HD textures with material maps, true-colour replacement loader | Not started |
+| 3 | HD textures with material maps, true-colour replacement loader | In progress |
 | 4 | Models: Blender import/export for .3DO and .KEY, new Kyle and stormtroopers | Not started |
 | 5 | Cutscenes: upscaled and graded, played from modern video files | Not started |
 | 6 | Mysteries of the Sith: the same treatment for the expansion | Not started |
@@ -59,7 +59,20 @@ That breaks down into concrete engine work:
 - [x] Haze and light shafts (being playtested)
 - [x] One-switch preset: `remaster 1` in the console
 
+### Stage 3 checklist
+
+- [x] Research: OpenJKDF2 already loads HD texture packs (colour, glow, displacement maps)
+- [x] Tool to extract every original texture to PNG (`tools/mat_extract.py`)
+- [x] Rebuild the community Neural Upscale pack from its installer (555 textures matched so far)
+- [ ] Find or recreate the rest of that pack
+- [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
+- [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
+
 ## Latest
+
+Stage 3 has started. Top: the remastered look on the original textures. Bottom: the same with HD textures from the community Neural Upscale pack (the Sarris building and Boc's rock wall gain real detail). The game's own loader already reads HD texture packs; new tools extract every original texture for upscaling and rebuild packs whose files lost their names.
+
+![Original vs HD textures](../docs/screenshots/stage3-hd-pack-off-on.png)
 
 The whole Stage 2 look behind one switch: open the console (backtick) and type `remaster 1` (`remaster 0` for the original). Top: original game. Bottom: remaster preset (per-pixel light with wet highlights, coloured saber light, reflections, haze, light shafts, grade, bloom, ambient occlusion).
 

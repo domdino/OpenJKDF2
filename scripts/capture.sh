@@ -14,7 +14,7 @@
 # off. Vsync is off so frame times show real cost, not the display refresh.
 #
 # Env: CAPTURE_MAP (default 01narshadda.jkl), CAPTURE_DELAY (s, default 8),
-#      CAPTURE_FRAMES (default 600), CAPTURE_WARP ("x y z pitch yaw roll", camera
+#      CAPTURE_FRAMES (default 600), CAPTURE_HD (1 = use hd/jkgm textures, 0 = originals), CAPTURE_WARP ("x y z pitch yaw roll", camera
 #      position; each run prints the warp it ended at, so a good view can be reused)
 # Output: logs/captures/NAME.png and NAME.log; the stats line is printed.
 set -e
@@ -39,6 +39,11 @@ for item in JK.EXE Episode Resource MUSIC; do
     [ -e "$CAPROOT/$item" ] || ln -s "$GAME/$item" "$CAPROOT/$item"
 done
 [ -e "$CAPROOT/grade" ] || ln -s "$ROOT/grade" "$CAPROOT/grade"
+# HD textures: on unless CAPTURE_HD=0 (for before/after comparisons).
+rm -f "$CAPROOT/jkgm"
+if [ "${CAPTURE_HD:-1}" = "1" ] && [ -d "$ROOT/hd/jkgm" ]; then
+    ln -s "$ROOT/hd/jkgm" "$CAPROOT/jkgm"
+fi
 
 # Default camera for level 1: the spawn room, facing the green sign (same room as
 # the north star frame). Other maps start wherever the level puts the player.

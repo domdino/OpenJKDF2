@@ -41,6 +41,8 @@ else
     export OPENJKDF2_ROOT="$ROOT/gamedata/jk1"
     # Colour grading LUTs live in the repo (grade/); the engine looks for them in the data folder.
     [ -e "$ROOT/gamedata/jk1/grade" ] || ln -s "$ROOT/grade" "$ROOT/gamedata/jk1/grade"
+    # HD texture packs (hd/jkgm, built by scripts/build_hd_pack.sh) load from <data>/jkgm.
+    [ -d "$ROOT/hd/jkgm" ] && [ ! -e "$ROOT/gamedata/jk1/jkgm" ] && ln -s "$ROOT/hd/jkgm" "$ROOT/gamedata/jk1/jkgm"
 fi
 
 "$BIN" "$@" 2>&1 | tee "$ROOT/logs/last_run.log"

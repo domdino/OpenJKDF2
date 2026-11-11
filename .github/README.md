@@ -82,7 +82,8 @@ That breaks down into concrete engine work:
 - [x] Skinning: one continuous mesh bends with the original skeleton, so every original animation drives modern characters (tested pixel-identical)
 - [x] Fit Jedi Academy's Kyle onto JK's skeleton (tools/blender/ja_to_jk.py): in game, driven by the original animations
 - [x] Stormtrooper from Jedi Academy (keeps JK's own rifle as a rigid part)
-- [ ] The rest of the cast from Jedi Academy (officers, Rodians, Grans, Jan, dark Jedi...)
+- [x] The cast from Jedi Academy: officers, commandos, Grans, Rodians, Trandoshans, Ugnaughts (18 JK models)
+- [ ] Named characters (Jerec and the Dark Jedi, Jan) and civilians
 - [ ] Material pass on the converted characters (Texture God)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper
@@ -96,6 +97,14 @@ That breaks down into concrete engine work:
 - [ ] Playtest every cutscene in game
 
 ## Latest
+
+Stage 4: most of Jedi Knight's cast now uses Jedi Academy's characters, fitted onto the original skeletons so every 1997 animation still drives them. Same lighting and framing for each pair:
+
+![The cast, 1997 vs remaster](../docs/screenshots/stage4-cast-sheet.jpg)
+
+In game, Nar Shaddaa (left 1997, right remaster):
+
+![In game: Nar Shaddaa](../docs/screenshots/cast/ingame-narshadda.jpg)
 
 Stage 4: the engine now supports skinned characters, and Jedi Academy's Kyle runs in Jedi Knight on the original skeleton and animations (left original, right Academy Kyle; bottom: mid-run, same animation).
 

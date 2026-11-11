@@ -56,12 +56,23 @@ SNAP = [
     ("rfemurYZ", "rthigh", "rtibia"), ("rtibia", "rcalf", "rtalus"), ("rtalus", "rfoot", None),
     ("lhumerus", "lshouldr", "lradius"), ("lradius", "lforearm", "lhand"), ("lhand", "lhand", None),
     ("rhumerus", "rshouldr", "rradius"), ("rradius", "rforearm", "rhand"), ("rhand", "rhand", None),
-    ("cervical", "neck", "cranium"), ("cranium", "head", None),
 ]
+# The neck and head aren't pinned to JK's joints (that floats the head off the collar on models
+# whose rest pose leans, like the stormtrooper); they ride on the fitted upper body.
 
 
-# A role the JK model lacks falls back to these (the stormtrooper has no neck node).
-ROLE_FALLBACK = {"neck": "torso"}
+# Other names JK models use for a role (Kyle: k_lshouldr; Trandoshan/Gran/Weequay: larm, l4arm, lleg).
+ROLE_ALIASES = {
+    "hip": ["hip", "hips"], "torso": ["torso", "chest"],
+    "lshouldr": ["lshouldr", "larm"], "rshouldr": ["rshouldr", "rarm"],
+    "lforearm": ["lforearm", "l4arm"], "rforearm": ["rforearm", "r4arm"],
+    "lthigh": ["lthigh", "lleg"], "rthigh": ["rthigh", "rleg"],
+}
+# A role the JK model lacks falls back (stormtrooper: no neck; robed Weequay: one "legs" node).
+ROLE_FALLBACK = {"neck": ["torso"], "lthigh": ["legs", "hip"], "rthigh": ["legs", "hip"],
+                 "lcalf": ["legs", "lthigh"], "rcalf": ["legs", "rthigh"]}
+# Rigid JK parts kept next to the skin unless --keep says otherwise: the weapons.
+AUTO_KEEP = ("gun", "weapon")
 
 
 def resolve_roles(jk):
@@ -69,13 +80,62 @@ def resolve_roles(jk):
     names = [nd.name.lower() for nd in jk.nodes]
     out = {}
     for role in set(BONE_MAP.values()):
-        cands = [i for i, n in enumerate(names) if n.endswith(role)]
-        if cands:
-            out[role] = min(cands, key=lambda i: len(names[i]))
-    for role, fb in ROLE_FALLBACK.items():
-        if role not in out and fb in out:
-            out[role] = out[fb]
+        for alias in ROLE_ALIASES.get(role, [role]):
+            exact = [i for i, n in enumerate(names) if n == alias]
+            cands = exact or [i for i, n in enumerate(names) if n.endswith(alias) and len(n) - len(alias) <= 3]
+            if cands:
+                out[role] = min(cands, key=lambda i: len(names[i]))
+                break
+    # Trust the hierarchy over names: a foot is the child of that side's calf and a hand the child
+    # of that side's forearm (JK's Rodian has lfoot/rfoot swapped: lfoot hangs off rcalf).
+    for side in "lr":
+        for end, limb in (("foot", "calf"), ("hand", "forearm")):
+            pr = out.get(side + limb)
+            if pr is None:
+                continue
+            kids = [i for i, nd in enumerate(jk.nodes) if nd.parent == pr]
+            want = [i for i in kids if names[i].endswith(end)]
+            if want and out.get(side + end) not in want:
+                out[side + end] = want[0]
+    for _ in range(2):
+        for role, fbs in ROLE_FALLBACK.items():
+            if role in out:
+                continue
+            for fb in fbs:
+                if fb in out:
+                    out[role] = out[fb]
+                    break
+                exact = [i for i, n in enumerate(names) if n == fb]
+                if exact:
+                    out[role] = exact[0]
+                    break
     return out
+
+
+def frame3(left, right, base):
+    """Orthonormal frame from a left/right joint pair and a base point below their midpoint."""
+    x = (left - right).normalized()
+    up = (left + right) / 2 - base
+    up = (up - x * up.dot(x)).normalized()
+    return Matrix((x, x.cross(up) * -1, up)).transposed()  # columns: x, forward, up
+
+
+def align_block(arm, bone, ja_l, ja_r, ja_base, jk_l, jk_r, jk_base, move=True):
+    """Rotate a pose bone (and everything below it) about its head so the JA joint pair and base
+    line up with JK's directions, then shift it so the pair's midpoint lands on JK's."""
+    pb = arm.pose.bones[bone]
+    A = arm.matrix_world
+    Ainv = A.inverted()
+    head_w = A @ pb.head
+    R = frame3(jk_l, jk_r, jk_base) @ frame3(ja_l, ja_r, ja_base).transposed()
+    Rw = Matrix.Translation(head_w) @ R.to_4x4() @ Matrix.Translation(-head_w)
+    pb.matrix = Ainv @ Rw @ A @ pb.matrix
+    bpy.context.view_layer.update()
+    if move:
+        mid_ja = (Rw @ ja_l + Rw @ ja_r) / 2
+        delta = (jk_l + jk_r) / 2 - mid_ja
+        pb.matrix = Ainv @ Matrix.Translation(delta) @ A @ pb.matrix
+        bpy.context.view_layer.update()
 
 
 def log(*a):
@@ -168,7 +228,7 @@ def main():
     glm, base, skin, template, out_dir, name = argv[:6]
     do_render = "--render" in argv
     # --keep stgun,...: keep the JK model's own rigid meshes on these nodes (e.g. the trooper's rifle)
-    keep = argv[argv.index("--keep") + 1].lower().split(",") if "--keep" in argv else []
+    keep = argv[argv.index("--keep") + 1].lower().split(",") if "--keep" in argv else None
     os.makedirs(out_dir, exist_ok=True)
     addon_utils.enable("jediacademy", default_set=True)
 
@@ -176,7 +236,12 @@ def main():
     jk = jk3do.load(template)
     rest = jk3do.rest_matrices(jk)
     roles = resolve_roles(jk)
-    native = {r for r, i in roles.items() if jk.nodes[i].name.lower().endswith(r)}
+    native = {r for r, i in roles.items() if any(jk.nodes[i].name.lower().endswith(a) for a in ROLE_ALIASES.get(r, [r]))}
+    if keep is None:
+        keep = [nd.name.lower() for nd in jk.nodes if any(k in nd.name.lower() for k in AUTO_KEEP)]
+    missing = {"hip", "torso", "head", "lhand", "rhand", "lfoot", "rfoot"} - set(roles)
+    if missing:
+        raise RuntimeError("JK model lacks nodes for %s" % sorted(missing))
     log("JK nodes for roles:", {r: jk.nodes[i].name for r, i in sorted(roles.items())})
     joint_of = [Vector((rest[i] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1])[:3]) for i, nd in enumerate(jk.nodes)]
     joint = {r: joint_of[i] for r, i in roles.items()}
@@ -219,6 +284,22 @@ def main():
         eb.use_connect = False
     bpy.ops.object.mode_set(mode="POSE")
     Ainv = arm.matrix_world.inverted()
+    pre = {b: ((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]) for b, n, _ in SNAP
+           if b in arm.pose.bones and n in roles}
+    log("pre-snap offsets (x,y,z):", {b: tuple(round(c, 4) for c in v) for b, v in pre.items()})
+    # Posture first: hips, then the whole upper body (shoulder line, lean, twist), as blocks.
+    W = lambda b: arm.matrix_world @ arm.pose.bones[b].head
+    if {"lthigh", "rthigh", "torso"} <= native:
+        # base point straight below the hip midpoint: only the hip line's turn is matched
+        drop = Vector((0, 0, 0.05))
+        align_block(arm, "pelvis", W("lfemurYZ"), W("rfemurYZ"), (W("lfemurYZ") + W("rfemurYZ")) / 2 - drop,
+                    joint["lthigh"], joint["rthigh"], (joint["lthigh"] + joint["rthigh"]) / 2 - drop, move=False)
+    if {"lshouldr", "rshouldr", "torso"} <= native:
+        align_block(arm, "upper_lumbar", W("lhumerus"), W("rhumerus"), W("upper_lumbar"),
+                    joint["lshouldr"], joint["rshouldr"], joint["torso"])
+    post = {b: round(((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]).length, 4)
+            for b, n, _ in SNAP if b in arm.pose.bones and n in roles}
+    log("offsets after posture fit:", post)
     for bone, node, child in snap:
         pb = arm.pose.bones.get(bone)
         if not pb:
@@ -236,6 +317,16 @@ def main():
             R = cur.rotation_difference(tgt).to_matrix() @ R
         pb.matrix = Matrix.Translation(h) @ R.to_4x4()
         bpy.context.view_layer.update()
+    # Keep the head facing straight ahead and upright (as the JK originals do at rest), undoing the
+    # upper body's lean/twist for the head only. (JK head nodes' own rest rotations are compensated
+    # by their meshes, so they can't be used as a target.)
+    if "head" in native and "cranium" in arm.pose.bones:
+        pb = arm.pose.bones["cranium"]
+        before = pb.matrix.to_3x3()
+        rest_rot = arm.data.bones["cranium"].matrix_local.to_3x3()
+        pb.matrix = Matrix.Translation(pb.head) @ rest_rot.to_4x4()
+        bpy.context.view_layer.update()
+        log("head turned %.1f degrees back to face forward" % math.degrees((before.transposed() @ rest_rot).to_quaternion().angle))
     errs = {b: ((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]).length for b, n, _ in snap if b in arm.pose.bones}
     log("max joint error after snapping: %.6f" % max(errs.values()), {b: round(e, 5) for b, e in errs.items() if e > 1e-4})
 

@@ -410,3 +410,31 @@ Dom's idea: reuse the Jedi Outcast / Academy characters (same Kyle, skinned, abo
 - **Known**: the Academy textures have painted-in highlights, so he reads shiny; a Texture God pass on his 7 textures (roughness maps, repaint) is the planned fix. Not yet checked: every animation (crouch, saber, deaths) and first-person hands.
 
 **Stormtrooper (same day).** The converter now works for any JK skeleton: JA bones map to roles (hip, torso, neck, head, lthigh, ...), matched to the JK node whose name ends with the role (`k_lthigh`, `stlthigh`); a role the model lacks falls back (the trooper has no neck, so neck -> torso, and that joint isn't snapped). `--keep stgun` keeps the JK model's own rigid meshes on chosen nodes: the trooper's rifle is part of st.3do on node `stgun`, so it stays as a rigid part next to the skin, with its original materials. Skin entries `*off` are honoured (Academy's default trooper skin hides the officer pauldron). Result: 2,543 vertices / 2,729 faces, 3 new textures + the original rifle; in game (09fuelstation) he holds the rifle correctly next to an original officer (docs/screenshots/stage4-academy-stormtrooper.png). Both Kyle and the trooper are installed as loose files in gamedata/jk1/3do for Dom's play sessions (delete that folder to go back).
+
+## 2026-11-11 - Stage 4: the cast from Jedi Academy
+
+**Batch: `tools/convert_cast.py`** converts JK's human/humanoid cast in one go (Blender convert, materials, side-by-side render), table in the script. 18 JK models from 8 Academy characters:
+
+| JK model | who | Academy (skin) |
+|---|---|---|
+| ky | Kyle | kyle |
+| st, s2, s3, s4 | stormtroopers (539 placements) | stormtrooper |
+| io | Imperial officer | imperial (default) |
+| ic, icrpt | Imperial commando | imperial (commander) |
+| ry, rystr, rh, rhstr | **Gran** (three eyes; the names mislead) | gran (default / sp) |
+| gr | **Rodian** (green, antennae) | rodian |
+| th, thstr, tk, tkstr | Trandoshan | trandoshan (default / sp) |
+| ugalt | Ugnaught | ugnaught (loose match: JK's is gold-armoured) |
+
+Not converted: `wm`/`w2` (human women civilians on Nar Shaddaa; no Academy match), creatures and droids (Gamorrean, mynock, probe droid, turrets, sewer creature), and the named villains (to do: JKHub ports or Dom's picks).
+
+**Fitting fixes after review** (Dom spotted a floating trooper head and high shoulders):
+- JK rest poses aren't neutral (the trooper is twisted and leaning towards his rifle). Pinning arms and head onto JK joints stretched the neck and hiked the shoulders. Now the hips are turned to JK's hip line and the whole upper body is rotated and shifted as a block (shoulder line, lean, twist) before the limbs are snapped; shoulders land within 0.003 before limb snapping instead of 0.03. The neck and head aren't pinned; the head keeps its rest orientation (upright, facing forward).
+- Roles also go by naming aliases (larm/l4arm/lleg, hips, chest) and **by hierarchy for hands and feet**: JK's Rodian has lfoot/rfoot swapped (lfoot hangs off rcalf), which crossed his legs.
+- Rigid weapon nodes (`gun`, `weapon`) are kept automatically.
+
+**Side-by-sides for sharing**: `tools/blender/compare_render.py` renders the 1997 model (its level's palette, nearest-filtered) and the remaster (HD textures) under identical Eevee studio lighting and framing, front and three-quarter; `tools/make_side_by_side.py` lays them out with labels. Every character: docs/screenshots/cast/<name>.jpg; all of them: docs/screenshots/stage4-cast-sheet.jpg; in game: docs/screenshots/cast/ingame-narshadda.jpg and ingame-fuelstation.jpg. Note the "original" colours are the textures at full brightness: JK's dim, palette-based lighting is what makes e.g. the officers' khaki read olive in game.
+
+**Install**: `scripts/install_cast.sh [names]` copies converted models into gamedata/jk1/3do as loose overrides; `--remove` restores the 1997 cast; `DATA=gamedata/capture` targets the capture folder.
+
+**Open**: art direction choices for Dom (Academy officers wear grey, JK's khaki; JK commandos wear helmets; the Ugnaught match is loose); animations other than idle/run not yet checked on the new cast; material pass (shine) pending Texture God.

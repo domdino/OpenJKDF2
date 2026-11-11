@@ -40,6 +40,7 @@
 // Added: Custom RGB lightsaber rendering state.
 extern int jkSaber_rgbEnabled;
 extern int jkSaber_rgbDrawActive;
+extern int jkSaber_bladeDrawActive;
 
 // DSi has *plenty* of time to read the text.
 #ifdef TARGET_RETRO_HOMEBREW
@@ -79,6 +80,9 @@ int jkPlayer_bLightShafts = 0;                              // Added (remaster)
 flex_t jkPlayer_shaftStrength = 1.0;                        // Added (remaster)
 int jkPlayer_anisotropy = 8;                                // Added (remaster): 1-16
 flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
+int jkPlayer_bSaberGlow = 1;                                 // Added (remaster): procedural glowing blades
+flex_t jkPlayer_saberGlowSize = 1.0;                        // Added (remaster)
+flex_t jkPlayer_saberGlowStrength = 1.0;                    // Added (remaster)
 int jkPlayer_bHdCutscenes = 1;                              // Added (remaster): play hdvideo/ replacements
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
@@ -234,6 +238,10 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterInt("r_anisotropy",                8,                          &jkPlayer_anisotropy,               CVARFLAG_LOCAL);
     // How blurry reflections are: 0 = mirror, 1 = very blurry. Until per-texture roughness exists.
     sithCvar_RegisterFlex("r_reflectionRoughness",      0.5,                        &jkPlayer_reflectionRoughness,      CVARFLAG_LOCAL);
+    // Lightsabers: glowing plasma blades (core, glow, halo, animated) instead of the 1997 textured strip.
+    sithCvar_RegisterBool("r_saberGlow",                1,                          &jkPlayer_bSaberGlow,               CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_saberGlowSize",            1.0,                        &jkPlayer_saberGlowSize,            CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_saberGlowStrength",        1.0,                        &jkPlayer_saberGlowStrength,        CVARFLAG_LOCAL);
     // Play HD replacement cutscenes from hdvideo/<name>.mov|mp4|m4v when they exist (macOS).
     sithCvar_RegisterBool("r_hdCutscenes",              1,                          &jkPlayer_bHdCutscenes,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
@@ -709,6 +717,9 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
         stdJSON_SaveFloat(ext_fpath, "reflectionroughness", jkPlayer_reflectionRoughness);
         stdJSON_SaveBool(ext_fpath, "hdcutscenes", jkPlayer_bHdCutscenes);
+        stdJSON_SaveBool(ext_fpath, "saberglow", jkPlayer_bSaberGlow);
+        stdJSON_SaveFloat(ext_fpath, "saberglowsize", jkPlayer_saberGlowSize);
+        stdJSON_SaveFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -933,6 +944,9 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_anisotropy = stdJSON_GetInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
         jkPlayer_reflectionRoughness = stdJSON_GetFloat(ext_fpath, "reflectionroughness", jkPlayer_reflectionRoughness);
         jkPlayer_bHdCutscenes = stdJSON_GetBool(ext_fpath, "hdcutscenes", jkPlayer_bHdCutscenes);
+        jkPlayer_bSaberGlow = stdJSON_GetBool(ext_fpath, "saberglow", jkPlayer_bSaberGlow);
+        jkPlayer_saberGlowSize = stdJSON_GetFloat(ext_fpath, "saberglowsize", jkPlayer_saberGlowSize);
+        jkPlayer_saberGlowStrength = stdJSON_GetFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 
@@ -1303,6 +1317,7 @@ void jkPlayer_renderSaberWeaponMesh(SithThing *thing)
                     jkSaber_rgbEnabled &&
                     (thing == sithPlayer_g_pLocalPlayerThing);
 
+                jkSaber_bladeDrawActive = 1; // Added (remaster)
                 rdThing_Draw(&playerInfo->polylineThing, primaryMat);
 
                 if (thing->jkFlags & JKFLAG_DUALSABERS)
@@ -1312,6 +1327,7 @@ void jkPlayer_renderSaberWeaponMesh(SithThing *thing)
 
                 // Restore normal rendering for other objects.
                 jkSaber_rgbDrawActive = 0;
+                jkSaber_bladeDrawActive = 0; // Added (remaster)
             }
         }
         else
@@ -1333,6 +1349,7 @@ void jkPlayer_renderSaberWeaponMesh(SithThing *thing)
                 jkSaber_rgbEnabled &&
                 (thing == sithPlayer_g_pLocalPlayerThing);
 
+            jkSaber_bladeDrawActive = 1; // Added (remaster)
             rdThing_Draw(&playerInfo->polylineThing, primaryMat);
 
             if (thing->jkFlags & JKFLAG_DUALSABERS)
@@ -1342,6 +1359,7 @@ void jkPlayer_renderSaberWeaponMesh(SithThing *thing)
 
             // Restore normal rendering for other objects.
             jkSaber_rgbDrawActive = 0;
+            jkSaber_bladeDrawActive = 0; // Added (remaster)
         }
     }
 }

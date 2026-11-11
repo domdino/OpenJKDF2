@@ -90,6 +90,8 @@ That breaks down into concrete engine work:
 - [ ] New stormtrooper
 - [x] New lightsaber: Kyle's hilt from Jedi Outcast in third person, first person and the pickups
 - [x] Third-person weapons no longer carry the 1997 hand
+- [x] Glowing plasma blades: white-hot core, coloured sheath and halo, animated, lighting the room (`r_saberGlow`)
+- [ ] Lightsaber swing trails
 
 ### Stage 5 checklist
 
@@ -99,6 +101,10 @@ That breaks down into concrete engine work:
 - [ ] Playtest every cutscene in game
 
 ## Latest
+
+The lightsaber blade is now a glowing plasma beam instead of a flat textured strip: a white-hot core, a deep coloured sheath and a soft halo that lights the room, with plasma that ripples and hums. Enemy sabers keep their own colours. ([video](../docs/screenshots/stage4-saber-blade.mp4))
+
+![Lightsaber blade, 1997 vs remaster](../docs/screenshots/stage4-saber-blade.jpg)
 
 Stage 4: most of Jedi Knight's cast now uses Jedi Academy's characters, fitted onto the original skeletons so every 1997 animation still drives them. Same lighting and framing for each pair:
 

@@ -12,6 +12,8 @@
 #include <math.h>
 
 #define RD_PROC_FLAG_SABER_RGB 0x40000000u
+#define RD_PROC_FLAG_SABER_BLADE 0x20000000u // Added (remaster): procedural lightsaber blade
+#define RD_TRI_FLAG_SABER_BLADE 0x80000
 #define RD_TRI_FLAG_SABER_RGB  0x40000
 
 #ifdef RDCACHE_RENDER_LINES
@@ -390,7 +392,7 @@ int rdCache_SendFaceListToHardware()
 
         // Added: We need to know if a face is flex_d_t-sided
         if ((active_6c->type & RD_FF_DOUBLE_SIDED) &&
-            (active_6c->light_flags & ~RD_PROC_FLAG_SABER_RGB))
+            (active_6c->light_flags & ~(RD_PROC_FLAG_SABER_RGB | RD_PROC_FLAG_SABER_BLADE)))
         {
             flags_idk_ |= 0x10000;
         }
@@ -661,6 +663,15 @@ int rdCache_SendFaceListToHardware()
             flags_idk_ |= 0x20000;
         }
 #endif
+
+        // Added (remaster): procedural lightsaber blade (rdPolyline): additive (premultiplied
+        // translucent path, alpha 0), depth-tested, no depth write; colour and raw blade-space
+        // UVs are set per vertex below.
+        int bSaberBlade = (active_6c->light_flags & RD_PROC_FLAG_SABER_BLADE) != 0;
+        if (bSaberBlade) {
+            flags_idk_ |= RD_TRI_FLAG_SABER_BLADE | 0x400 | 0x800;
+            flags_idk_ &= ~(0x1000 | 0x200);
+        }
 
         if ( v11.mipmap_related != 3 )
         {
@@ -959,6 +970,11 @@ int rdCache_SendFaceListToHardware()
                 rdCache_aHWVertices[rdCache_totalVerts].tu = uvs_in_pixels[vtx_idx].x / actual_width;
                 rdCache_aHWVertices[rdCache_totalVerts].tv = uvs_in_pixels[vtx_idx].y / actual_height;
 #endif
+                if (bSaberBlade) { // Added (remaster)
+                    rdCache_aHWVertices[rdCache_totalVerts].color = active_6c->bladeColor;
+                    rdCache_aHWVertices[rdCache_totalVerts].tu = uvs_in_pixels[vtx_idx].x;
+                    rdCache_aHWVertices[rdCache_totalVerts].tv = uvs_in_pixels[vtx_idx].y;
+                }
                 
                 ++rdCache_totalVerts;
             }

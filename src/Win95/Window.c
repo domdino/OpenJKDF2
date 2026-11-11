@@ -1574,6 +1574,17 @@ static void Window_DevCaptureTick(void)
     }
 
     if (state == 2) {
+        // OPENJKDF2_CAPTURE_SEQ=1: also save every timed frame (NAME_0000.png ...) for clips.
+        const char* pSeq = getenv("OPENJKDF2_CAPTURE_SEQ");
+        if (pSeq && pSeq[0] == '1') {
+            char aSeq[160];
+            stdString_SafeStrCopy(aSeq, aPath, sizeof(aSeq));
+            char* pDot = strrchr(aSeq, '.');
+            if (pDot) *pDot = 0;
+            char aFrame[192];
+            snprintf(aFrame, sizeof(aFrame), "%s_%04d.png", aSeq, frameIdx);
+            std3D_Screenshot(aFrame);
+        }
         aFrameMs[frameIdx++] = (float)((now - tLast) / 1e6);
         tLast = now;
         if (frameIdx < nFrames) return;

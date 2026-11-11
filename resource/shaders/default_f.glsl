@@ -181,6 +181,50 @@ layout(location = 4) out vec4 fragColorSSR;
 // Added (remaster): material for the reflection pass (R = roughness, G = metalness, A = 1 on solid).
 layout(location = 5) out vec4 fragColorMat;
 
+// Added (remaster): procedural lightsaber blade. The blade arrives as one camera-facing capsule
+// quad (rdPolyline_DrawBlade): f_uv is blade space in glow radii (x across, y along from the
+// base), f_color is the blade colour with (blade length / glow radius / 32) in alpha. The
+// distance to the core segment makes a white-hot core, a saturated sheath and a soft halo;
+// two layers of noise drift along the blade with a hum flicker, so the plasma looks alive.
+uniform int saberBlade;
+uniform float saberStrength;
+uniform float u_time;
+
+float saberHash(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+float saberNoise(float x)
+{
+    float i = floor(x);
+    float f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(saberHash(i), saberHash(i + 1.0), f);
+}
+
+void saberBladeMain()
+{
+    vec3 col = f_color.rgb;
+    float lr = f_color.a * 32.0;
+    float along = clamp(f_uv.y, 0.0, lr);
+    float d = length(vec2(f_uv.x, f_uv.y - along));
+    float t = u_time;
+    float n = saberNoise(along * 2.3 - t * 9.0) * 0.6 + saberNoise(along * 5.7 + t * 14.0) * 0.4;
+    float hum = 0.92 + 0.08 * sin(t * 71.0) * sin(t * 29.0 + 1.7);
+    float coreR = 0.06 * (0.9 + 0.25 * n);
+    float core = 1.0 - smoothstep(coreR * 0.5, coreR * 1.2, d); // (reversed smoothstep edges are undefined in GLSL)
+    float sheath = exp(-pow(d / (0.12 + 0.03 * n), 2.0));
+    float halo = exp(-d * 5.0) * 0.16;
+    float edge = 1.0 - smoothstep(0.8, 1.0, d);
+    float s = saberStrength * edge;
+    vec3 sat = col * col;                     // deeper colour for the sheath, so it doesn't wash to white
+    float ripple = 0.8 + 0.4 * saberNoise(along * 9.0 - t * 23.0); // fast plasma ripples in the sheath
+    vec3 c = ((sat * 0.75 + col * 0.15) * sheath * hum * ripple + col * halo + vec3(1.0) * core * 0.95) * s;
+    fragColor = vec4(c, 0.0); // premultiplied with alpha 0: purely additive light
+    fragColorEmiss = vec4((col * (sheath * 0.45 + halo * 1.3) + vec3(core) * 0.2) * s, 0.0);
+    fragColorPos = vec4(0.0);
+    fragColorNormal = vec4(0.0);
+    fragColorSSR = vec4(0.0);
+    fragColorMat = vec4(0.0);
+}
+
 float luminance(vec3 c_rgb)
 {
     const vec3 W = vec3(0.2125, 0.7154, 0.0721);
@@ -354,6 +398,7 @@ vec4 bilinear_paletted_light(float index)
 
 void main(void)
 {
+    if (saberBlade != 0) { saberBladeMain(); return; } // Added (remaster)
     float originalZ = gl_FragCoord.z / gl_FragCoord.w;
     vec3 adjusted_coords = vec3(f_coord.x/iResolution.x, f_coord.y/iResolution.y, originalZ);
     vec3 adjusted_coords_norms = vec3(gl_FragCoord.x/iResolution.x, gl_FragCoord.y/iResolution.y, 1.0/gl_FragCoord.z);

@@ -700,6 +700,7 @@ typedef struct rdProcEntry
     int32_t y_min_related;
     int32_t y_max_related;
     uint32_t vertexColorMode;
+    uint32_t bladeColor; // Added (remaster): procedural saber blade, ARGB (A = blade length / glow radius / 32)
 } rdProcEntry;
 
 typedef struct v11_struct

@@ -13,6 +13,16 @@
 #include <math.h>
 
 extern int jkSaber_rgbDrawActive;
+// Added (remaster): procedural lightsaber blade (see rdPolyline_DrawBlade)
+#define RD_PROC_FLAG_SABER_BLADE 0x20000000u
+extern int jkSaber_bladeDrawActive;
+extern float jkSaber_rgbRed, jkSaber_rgbGreen, jkSaber_rgbBlue;
+extern int jkPlayer_bSaberGlow;
+extern flex_t jkPlayer_saberGlowSize;
+int sithGlowLights_MaterialColor(rdMaterial* pMat, float* pOutRGB);
+static int rdPolyline_bBlade = 0;
+static uint32_t rdPolyline_bladeColor = 0;
+static rdVector2 rdPolyline_aBladeUVs[4];
 
 #define RD_PROC_FLAG_SABER_RGB 0x40000000u
 
@@ -198,8 +208,66 @@ void rdPolyline_FreeEntry(rdPolyline *pPolyline)
     }
 }
 
+// Added (remaster): one camera-facing capsule quad around the whole blade, glow radius R wide.
+// UVs are blade-space in units of R (u across: -1..1, v along: -1 at the base cap to L/R+1 past
+// the tip), the vertex colour is the blade colour with L/R/32 in alpha; the shader turns the
+// distance to the core segment into a white-hot core, coloured glow, halo and moving plasma.
+static int rdPolyline_DrawBlade(rdThing *pLine, rdMatrix34 *pOrient)
+{
+    rdPolyline* polyline = pLine->polyline;
+    rdMatrix34 out;
+    rdVector3 tip, base;
+    rdMeshinfo idxInfo;
+    rdMatrix_Multiply34(&out, &rdCamera_g_pCurCamera->orient, pOrient);
+    rdVector3 v = {0.0, polyline->length, 0.0};
+    rdMatrix_TransformPoint34(&tip, &v, &out);
+    base = out.scale;
+
+    flex_t core = polyline->baseRadius > polyline->tipRadius ? polyline->baseRadius : polyline->tipRadius;
+    flex_t R = core * 7.0f * (jkPlayer_saberGlowSize > 0.05f ? jkPlayer_saberGlowSize : 0.05f);
+    if (R <= 0.0f) R = 0.01f;
+    flex_t dx = tip.x - base.x, dz = tip.z - base.z;
+    flex_t mag = stdMath_Sqrt(dx * dx + dz * dz);
+    flex_t ux = 0.0f, uz = 1.0f;
+    if (mag > 0.000001f) { ux = dx / mag; uz = dz / mag; }
+    flex_t nx = uz, nz = -ux; // the original blade quad's "+" side
+    flex_t lr = mag / R;
+
+    // Same corner order (and winding) as the original blade quad: tip+, tip-, base-, base+.
+    polylineVerts[0].x = tip.x + (ux + nx) * R;  polylineVerts[0].z = tip.z + (uz + nz) * R;  polylineVerts[0].y = tip.y;
+    polylineVerts[1].x = tip.x + (ux - nx) * R;  polylineVerts[1].z = tip.z + (uz - nz) * R;  polylineVerts[1].y = tip.y;
+    polylineVerts[2].x = base.x - (ux + nx) * R; polylineVerts[2].z = base.z - (uz + nz) * R; polylineVerts[2].y = base.y;
+    polylineVerts[3].x = base.x - (ux - nx) * R; polylineVerts[3].z = base.z - (uz - nz) * R; polylineVerts[3].y = base.y;
+    rdPolyline_aBladeUVs[0].x = 1.0f;  rdPolyline_aBladeUVs[0].y = lr + 1.0f;
+    rdPolyline_aBladeUVs[1].x = -1.0f; rdPolyline_aBladeUVs[1].y = lr + 1.0f;
+    rdPolyline_aBladeUVs[2].x = -1.0f; rdPolyline_aBladeUVs[2].y = -1.0f;
+    rdPolyline_aBladeUVs[3].x = 1.0f;  rdPolyline_aBladeUVs[3].y = -1.0f;
+
+    // Colour: the player's custom RGB if set, else the blade texture's saturated colour.
+    float rgb[3] = {0.6f, 0.8f, 1.0f};
+    if (jkSaber_rgbDrawActive) { rgb[0] = jkSaber_rgbRed; rgb[1] = jkSaber_rgbGreen; rgb[2] = jkSaber_rgbBlue; }
+    else sithGlowLights_MaterialColor(polyline->face.material, rgb);
+    int a = (int)(lr / 32.0f * 255.0f + 0.5f); if (a > 255) a = 255; if (a < 0) a = 0;
+    int r = (int)(rgb[0] * 255.0f), g = (int)(rgb[1] * 255.0f), b = (int)(rgb[2] * 255.0f);
+    r = r < 0 ? 0 : r > 255 ? 255 : r; g = g < 0 ? 0 : g > 255 ? 255 : g; b = b < 0 ? 0 : b > 255 ? 255 : b;
+    rdPolyline_bladeColor = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+
+    idxInfo.numVertices = 4;
+    idxInfo.aVertices = polylineVerts;
+    idxInfo.paDynamicLight = 0;
+    idxInfo.intensities = 0;
+    idxInfo.aTexVerticies = rdPolyline_aBladeUVs;
+    rdPolyline_bBlade = 1;
+    rdPolyline_DrawFace(pLine, &polyline->face, polylineVerts, &idxInfo);
+    rdPolyline_bBlade = 0;
+    return 1;
+}
+
 int rdPolyline_Draw(rdThing *pLine, rdMatrix34 *pOrient)
 {
+    if (jkSaber_bladeDrawActive && jkPlayer_bSaberGlow) // Added (remaster)
+        return rdPolyline_DrawBlade(pLine, pOrient);
+
     rdPolyline *polyline;
     flex_t length;
     flex_d_t tip_left;
@@ -383,7 +451,11 @@ void rdPolyline_DrawFace(rdThing *pLine, rdFace *pFace, rdVector3 *aVertices, rd
             procEntry->textureMode = rdroid_curTextureMode;
     }
 
-    rdPrimit3_ClipFace(rdCamera_g_pCurCamera->pClipFrustum, procEntry->geometryMode, procEntry->lightingMode, procEntry->textureMode, aUVs, &mesh_out, &pFace->texVertOffset);
+    // Added (remaster): the procedural blade's UVs are blade space, so skip the 1997 shimmer offset
+    // (jkSaber_PolylineRand scrolls texVertOffset every frame).
+    rdVector2 zeroOffset = {0.0, 0.0};
+    rdPrimit3_ClipFace(rdCamera_g_pCurCamera->pClipFrustum, procEntry->geometryMode, procEntry->lightingMode, procEntry->textureMode, aUVs, &mesh_out,
+                       rdPolyline_bBlade ? &zeroOffset : &pFace->texVertOffset);
     if ( mesh_out.numVertices < 3 )
         return;
 
@@ -474,6 +546,10 @@ void rdPolyline_DrawFace(rdThing *pLine, rdFace *pFace, rdVector3 *aVertices, rd
     procEntry->light_flags = jkSaber_rgbDrawActive
         ? RD_PROC_FLAG_SABER_RGB
         : 0;
+    if (rdPolyline_bBlade) { // Added (remaster)
+        procEntry->light_flags = RD_PROC_FLAG_SABER_BLADE;
+        procEntry->bladeColor = rdPolyline_bladeColor;
+    }
     procEntry->wallCel = pLine->wallCel;
     procEntry->type = pFace->type;
     procEntry->extralight = pFace->extraLight;

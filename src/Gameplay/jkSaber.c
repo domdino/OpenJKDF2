@@ -23,6 +23,7 @@
 // These values are controlled by the saberrgb console command.
 int jkSaber_rgbEnabled = 0;
 int jkSaber_rgbDrawActive = 0;
+int jkSaber_bladeDrawActive = 0; // Added (remaster): the polyline being drawn is a lightsaber blade
 
 float jkSaber_rgbRed = 1.0f;
 float jkSaber_rgbGreen = 1.0f;
@@ -99,6 +100,7 @@ void jkSaber_Draw(rdMatrix34* posRotMat)
 
         // Added: Mark the player's saber for custom RGB rendering.
         jkSaber_rgbDrawActive = jkSaber_rgbEnabled;
+        jkSaber_bladeDrawActive = 1; // Added (remaster)
 
         // Right-hand saber
         rdThing_Draw(
@@ -118,6 +120,7 @@ void jkSaber_Draw(rdMatrix34* posRotMat)
 
         // Restore normal rendering for everything else.
         jkSaber_rgbDrawActive = 0;
+        jkSaber_bladeDrawActive = 0; // Added (remaster)
     }
 }
 

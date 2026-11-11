@@ -448,3 +448,19 @@ Not converted: `wm`/`w2` (human women civilians on Nar Shaddaa; no Academy match
 **Lightsaber.** The engine draws the blade from the hand mesh's origin along its +Y (jkSaber: jointMat.scale + lvec), and the 1997 hilt runs from y = -0.028 to 0 in sabg (-0.033 in the first-person sabv). `tools/make_hilt.py [hilt]` exports a Jedi Academy hilt (`tools/blender/ja_hilt_export.py`, emitter from its *blade1 tag), scales it to each old hilt's exact length, puts the emitter at the origin pointing +Y in sabg/sabv, and replaces the KYSABER faces in sabg (handless), sabv (first-person hands kept), sab0 and sabp (pickups; emitter towards the blade stub where there is one). Default hilt: `saber`, Kyle's own from Jedi Outcast; the 12 options are in docs/screenshots/stage4-hilt-options.jpg. Verified in game: blade sits on the new emitter in first and third person. Side-by-side: docs/screenshots/cast/saber.jpg.
 
 **Capture options added**: `CAPTURE_CMDS` (cheats, e.g. red5) and `CAPTURE_WEAPON` (10 = saber; switched 2 s in, after the level's startup scripts pick their own weapon). Preview renders merge the original and new MAT folders so kept original materials show; `--prop` stands props upright for framing.
+
+## 2026-11-11 - Glowing plasma lightsaber blades
+
+Dom: "a realistic light emitting glow and plasma animation would make a big difference".
+
+**Before**: every blade is an rdPolyline: three flat textured quads (tip cap, base cap, strip) with the colour baked into the blade texture, and a random UV jitter (jkSaber_PolylineRand) for shimmer.
+
+**Now** (`r_saberGlow 1`, default; `0` = the 1997 blade):
+- `rdPolyline_DrawBlade`: when the polyline being drawn is a saber (`jkSaber_bladeDrawActive`, set around the player/NPC third-person draws in jkPlayer.c and the first-person draw in jkSaber.c), one camera-facing capsule quad replaces the three. It's 7x the blade radius wide (`r_saberGlowSize` scales it); UVs are blade space in glow radii (u across, v along from the base); the vertex colour carries the blade colour (the player's custom RGB if set, else the blade texture's saturated colour via sithGlowLights_MaterialColor, so enemy sabers keep their colours) with blade length / radius / 32 in alpha. The 1997 UV jitter is skipped for it.
+- rdCache: blade faces (`RD_PROC_FLAG_SABER_BLADE` -> tri flag 0x80000) take the premultiplied translucent path with alpha 0, so they add light; depth-tested, no depth write; raw UVs and the blade colour per vertex.
+- Shader (`default_f.glsl`, `saberBlade`): distance to the core segment gives a thin white-hot core, a deep-coloured sheath (colour squared so it doesn't wash to white), and a soft halo that lights the surroundings; two noise layers drift along the blade plus fast sheath ripples and a hum flicker (`u_time`). It also writes the bloom buffer. `r_saberGlowStrength` scales it.
+- Gotchas found: reversed `smoothstep` edges are undefined in GLSL (returned 0 on Apple's GPU and zeroed the blade); the saber's per-frame UV jitter shifted the blade-space UVs off the axis.
+
+**Captures** gained `CAPTURE_SEQ=1`: every timed frame is saved and `capture.sh` makes an MP4 (60 fps with `r_fpslimit=60`). Before/after: docs/screenshots/stage4-saber-blade.jpg and .mp4.
+
+**Not yet**: a swing trail (motion smear between the previous and current blade), and a check on enemy sabers in a Dark Jedi fight.

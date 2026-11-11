@@ -20,7 +20,8 @@
 #      CAPTURE_HDVIDEO (folder of HD cutscene replacements, default hd/video),
 #      CAPTURE_CAMERA (1 = third-person camera, to see Kyle),
 #      CAPTURE_KEY (e.g. kyrun0.key: play that animation on the player as timing starts),
-#      CAPTURE_CMDS (cheats/console commands, ';'-separated, e.g. red5), CAPTURE_WEAPON (10 = saber)
+#      CAPTURE_CMDS (cheats/console commands, ';'-separated, e.g. red5), CAPTURE_WEAPON (10 = saber),
+#      CAPTURE_SEQ=1 (save every timed frame and make NAME.mp4; use r_fpslimit=60 for real-time speed)
 # Output: logs/captures/NAME.png and NAME.log; the stats line is printed.
 set -e
 
@@ -81,9 +82,15 @@ OPENJKDF2_CAPTURE_CAMERA="${CAPTURE_CAMERA:-0}" \
 OPENJKDF2_CAPTURE_KEY="${CAPTURE_KEY:-}" \
 OPENJKDF2_CAPTURE_CMDS="${CAPTURE_CMDS:-}" \
 OPENJKDF2_CAPTURE_WEAPON="${CAPTURE_WEAPON:-}" \
+OPENJKDF2_CAPTURE_SEQ="${CAPTURE_SEQ:-}" \
     script -q /dev/null "$BIN" -autostart -sp -episode JK1 -map "${CAPTURE_MAP:-01narshadda.jkl}" \
     < /dev/null > "$OUT_DIR/$NAME.log" 2>&1 || true
 
+if [ "${CAPTURE_SEQ:-}" = "1" ] && ls "$OUT_DIR/${NAME}_0000.png" >/dev/null 2>&1; then
+    sleep 2
+    ffmpeg -nostdin -v error -y -framerate 60 -i "$OUT_DIR/${NAME}_%04d.png" -c:v libx264 -pix_fmt yuv420p -crf 16 "$OUT_DIR/$NAME.mp4" \
+        && rm -f "$OUT_DIR/${NAME}"_[0-9][0-9][0-9][0-9].png && echo "clip: $OUT_DIR/$NAME.mp4"
+fi
 tr -d '\r' < "$OUT_DIR/$NAME.log" | grep "ignored)" || true
 if ! tr -d '\r' < "$OUT_DIR/$NAME.log" | grep "^CAPTURE: frames"; then
     echo "Capture failed, see $OUT_DIR/$NAME.log"

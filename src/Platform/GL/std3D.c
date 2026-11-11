@@ -41,6 +41,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 // Added: Custom RGB lightsaber triangle marker.
 #define RD_TRI_FLAG_SABER_RGB 0x40000
+#define RD_TRI_FLAG_SABER_BLADE 0x80000 // Added (remaster): procedural lightsaber blade (rdCache)
 
 typedef struct std3DSimpleTexStage
 {
@@ -152,6 +153,9 @@ GLint uniform_light_mult, uniform_displacement_factor, uniform_iResolution;
 // Added: Custom RGB lightsaber shader uniforms.
 static GLint uniform_saberRgbEnabled = -1;
 static GLint uniform_saberRgbColor = -1;
+static GLint uniform_saberBlade = -1;      // Added (remaster)
+static GLint uniform_saberStrength = -1;   // Added (remaster)
+static GLint uniform_time = -1;            // Added (remaster): seconds, for animated effects
 
 // RGB state defined in jkSaber.c.
 extern float jkSaber_rgbRed;
@@ -676,6 +680,9 @@ int init_resources()
         programDefault, "saberRgbEnabled"
     );
 
+    uniform_saberBlade = std3D_tryFindUniform(programDefault, "saberBlade");
+    uniform_saberStrength = std3D_tryFindUniform(programDefault, "saberStrength");
+    uniform_time = std3D_tryFindUniform(programDefault, "u_time");
     uniform_saberRgbColor = std3D_tryFindUniform(
         programDefault, "saberRgbColor"
     );
@@ -3404,6 +3411,10 @@ void std3D_DrawRenderList()
         uniform_saberRgbEnabled,
         (last_flags& RD_TRI_FLAG_SABER_RGB) ? 1 : 0
     );
+    // Added (remaster): procedural saber blades, and time for their plasma
+    glUniform1i(uniform_saberBlade, (last_flags & RD_TRI_FLAG_SABER_BLADE) ? 1 : 0);
+    glUniform1f(uniform_saberStrength, jkPlayer_saberGlowStrength);
+    glUniform1f(uniform_time, (float)((double)SDL_GetTicksNS() / 1e9));
 
     glUniform3f(
         uniform_saberRgbColor,
@@ -3478,6 +3489,9 @@ void std3D_DrawRenderList()
             std3D_DoTex(tex, &tris[j], GL_tmpTrisAmt-j);
             
             int changed_flags = (last_flags ^ tris[j].flags);
+
+            if (changed_flags & RD_TRI_FLAG_SABER_BLADE) // Added (remaster)
+                glUniform1i(uniform_saberBlade, (tris[j].flags & RD_TRI_FLAG_SABER_BLADE) ? 1 : 0);
 
             // Added: Switch RGB override when entering or leaving a saber batch.
             if (changed_flags & RD_TRI_FLAG_SABER_RGB)

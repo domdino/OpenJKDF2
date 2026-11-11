@@ -347,3 +347,23 @@ Rejected: FFmpeg libraries (big dependency, licensing, nothing gained on a Mac);
 Not yet checked: playing a full cutscene with sound end to end in a real session, and pausing (the HD frame holds; resumes with the SMK).
 
 **Importing renders: `python3 tools/import_cutscenes.py [folder]`** (default hd/video_src). Finds renders named `<NAME>_<anything>.mp4|mov|m4v` (Topaz writes e.g. `01-02A_chf3_prob4.mp4` next to its source), skips ones still rendering (Topaz temp names `NAME_<digits>.mp4`, or modified in the last 30 s), checks each opens and matches the original's length within 0.5 s, then hard-links the newest into `hd/video/<NAME>.<ext>`. Re-run it any time; it replaces older imports.
+
+## 2026-11-11 - Stage 4 research: Blender tools and model limits
+
+**Blender add-on: use smlu/blender-sith** (github.com/smlu/blender-sith, GPL-3.0, actively maintained, last commit 2026-11-05). Imports and exports 3DO 2.1-2.3, KEY animations (with a JKDF2 limits check on export), MAT textures incl. colormaps, per-face flags and light modes. Covers JK and MotS. Needs **Blender 5.0+**; Dom has 4.5 LTS, so 5.x has to be installed alongside. No need to write our own.
+
+**How JK models work.** Kyle (ky.3do) is 16 rigid parts on an 18-node hierarchy, with 4 detail levels; full detail is just 202 vertices / 241 faces. Stormtrooper (st.3do) is the same layout, 195 / 208. KEY files animate the nodes (rotate/move whole parts); there is **no skinning**, so a new model has to be built as separate rigid parts (head, upper arm, forearm...) matching the original hierarchy, or the existing animations won't drive it. Joints will show unless the parts overlap or are designed for it, as in the original.
+
+**Engine limits a detailed model will hit** (rdModel3 loader / renderer):
+
+| Limit | Value | What happens |
+|---|---|---|
+| Vertices per mesh (part) | 512 | Loader rejects the model. Also the size of the shared transform buffer `aView[512]`, so raising one means raising both |
+| Faces per mesh | 512 | Loader rejects |
+| UVs per mesh | 768 | Loader rejects |
+| Vertices per face | 24 (clipper buffers are 32) | Loader rejects; triangles/quads are fine |
+| Hierarchy nodes | 64 (rdPuppet) | Kyle uses 18, so room to add nodes |
+| Mesh / node names | 32 chars | Same as the add-on's KEY export check |
+| Render cache | 1024 faces per flush | Not a limit: flushes and continues, costs draw calls |
+
+So a modern Kyle (say 10-20k triangles over 16 parts, 600-1250 per part) needs the per-mesh limits raised to a few thousand. That's a small change (loader checks plus the `aView` buffer), to do when the first new model exists to test it with. HD textures for models already work through the Stage 3 loader (models use MATs like walls).

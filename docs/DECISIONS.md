@@ -134,3 +134,11 @@ Open question for Dom: north star 1 (clean, teal, readable) or north star 2 (gri
 - Contact sheet: docs/screenshots/stage2-effects-base-bloom-ssao-all.png (top: base, bloom; bottom: SSAO, all on with the teal test grade).
 
 **Capture mode, final form**: borderless window parked at -30000,-30000, background app (no Dock icon, no focus), never grabs or warps the mouse (logged as mousegrab=0), mouse input ignored, camera re-warped with the head levelled before timing. Hiding the window outright doesn't work on macOS: a hidden window has no drawable and everything renders black.
+
+## 2026-11-11 - Art direction chosen: north star 2 (grimy)
+
+Dom picked north star 2: dark, wet, grimy, atmospheric. What that sets:
+- Default grade: darker, desaturated, warm-brown midtones, dense blacks (grade/grimy-test.cube is the starter until Dom grades one in Resolve).
+- Materials (Stage 3): low-roughness, wet-looking grime, so roughness/specular maps matter as much as colour.
+- Per-pixel lighting must support strong, sharp specular highlights.
+- Haze and light shafts from bright sources (skylights, windows) are worth building. Lens streaks: maybe, subtly.

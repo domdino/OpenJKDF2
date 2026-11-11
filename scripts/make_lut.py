@@ -3,12 +3,15 @@
 
   scripts/make_lut.py identity grade/identity.cube
   scripts/make_lut.py teal grade/teal-test.cube
+  scripts/make_lut.py grimy grade/grimy-test.cube
 
 identity: neutral, changes nothing. Use it to check the pipeline, or load it into
           Resolve as a starting node.
 teal:     a rough starter look in the direction of the north star frame: cooler
           teal shadows, slightly warm highlights, a gentle S-curve and a touch less
           saturation. A placeholder until a real grade is made in Resolve.
+grimy:    starter look for north star 2 (the chosen direction): crushed blacks,
+          heavy desaturation, warm-brown mids, slightly cool highlights.
 
 The intended workflow for real grades: take an ungraded in-game frame (F12, or
 scripts/capture.sh), grade it in Resolve on a Rec.709 timeline, export a 33-point
@@ -55,7 +58,36 @@ def teal(r, g, b):
     return clamp(r), clamp(g), clamp(b)
 
 
-LOOKS = {"identity": identity, "teal": teal}
+def grimy(r, g, b):
+    """Starter look for north star 2: dark, desaturated, warm-brown, dense blacks."""
+    clamp = lambda x: min(max(x, 0.0), 1.0)
+
+    # Crush the toe and add contrast: blacks get denser, highlights stay open.
+    def curve(x):
+        x = clamp(x)
+        toe = x * x * (1.6 - 0.6 * x)            # darker shadows and low mids
+        return clamp(toe + 0.10 * (x - 0.5) * (1.0 - abs(2.0 * x - 1.0)))
+
+    r, g, b = curve(r), curve(g), curve(b)
+
+    # Heavy desaturation.
+    luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    sat = 0.6
+    r = luma + (r - luma) * sat
+    g = luma + (g - luma) * sat
+    b = luma + (b - luma) * sat
+
+    # Warm-brown midtones, near-neutral cool highlights (skylight), neutral blacks.
+    mid = 4.0 * luma * (1.0 - luma)
+    high = smoothstep(0.7, 1.0, luma)
+    r += 0.045 * mid - 0.010 * high
+    g += 0.015 * mid + 0.000 * high
+    b += -0.040 * mid + 0.015 * high
+
+    return clamp(r), clamp(g), clamp(b)
+
+
+LOOKS = {"identity": identity, "teal": teal, "grimy": grimy}
 
 
 def main():

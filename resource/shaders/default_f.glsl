@@ -90,6 +90,15 @@ uniform float u_pplWetness;             // 0 = matte, 1 = soaked
 uniform int u_pplNumGlow;               // glow lights: static lights at glowing surfaces
 uniform vec4 u_pplGlowPos[24];          // camera space xyz, w = radius
 uniform vec4 u_pplGlowCol[24];          // rgb colour, w = intensity
+uniform int u_ssrWrite;                 // 1 = write reflection data
+uniform vec3 u_pplUpCam;                // world up in camera space
+
+vec2 ssr_octEncode(vec3 n)
+{
+    n /= (abs(n.x) + abs(n.y) + abs(n.z));
+    vec2 s = vec2(n.x >= 0.0 ? 1.0 : -1.0, n.y >= 0.0 ? 1.0 : -1.0);
+    return (n.z >= 0.0) ? n.xy : (1.0 - abs(n.yx)) * s;
+}
 
 // Rebuild the camera-space position from screen position and depth, inverting the
 // engine's projection: x = halfW + X*f/Y, y = halfH - Z*f/Y.
@@ -158,6 +167,11 @@ layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragColorEmiss;
 layout(location = 2) out vec4 fragColorPos;
 layout(location = 3) out vec4 fragColorNormal;
+// Added (remaster): reflection data for the screen-space reflection pass:
+// octahedral camera-space normal (xy), depth (z, negative = this surface doesn't reflect),
+// alpha 1 on solid surfaces so blending writes it as-is, all zero on see-through ones so
+// blending leaves it alone.
+layout(location = 4) out vec4 fragColorSSR;
 
 float luminance(vec3 c_rgb)
 {
@@ -441,10 +455,10 @@ void main(void)
         vec3 lit = min(vertex_color.rgb + ppl_diff, vec3(1.0));
         main_color.rgb = sampled_color.rgb * lit * albedoFactor_copy.rgb;
 
-        // No highlights on see-through or additive faces (sprites, bolts, glass) or on
-        // fullbright surfaces, which are light sources themselves.
-        bool bNoSpec = (blend_mode == D3DBLEND_SRCALPHA || blend_mode == D3DBLEND_INVSRCALPHA
-                        || min(vertex_color.r, min(vertex_color.g, vertex_color.b)) > 0.995);
+        // No highlights on see-through or additive faces (sprites, bolts, glass). (Full vertex
+        // light doesn't mean a light source: brightly lit floors are at full light too.)
+        // (D3DBLEND_ONE is what solid surfaces use; only SRCALPHA/INVSRCALPHA are see-through.)
+        bool bNoSpec = (blend_mode == D3DBLEND_SRCALPHA || blend_mode == D3DBLEND_INVSRCALPHA);
         if (bNoSpec) ppl_spec = vec3(0.0);
         main_color.rgb += ppl_spec * mix(vec3(1.0), sampled_color.rgb, 0.35);
     }
@@ -575,6 +589,23 @@ if (saberRgbEnabled != 0)
 }
 
 finalEmiss.rgb += ppl_spec * 0.5; // Added (remaster): wet glints feed the bloom
+
+    // Added (remaster): reflection data
+    fragColorSSR = vec4(0.0);
+    if (u_ssrWrite != 0 && f_invz > 0.0)
+    {
+        bool bSolid = (blend_mode != D3DBLEND_SRCALPHA && blend_mode != D3DBLEND_INVSRCALPHA
+                       && orig_alpha > 0.99);
+        if (bSolid)
+        {
+            vec3 n = ppl_N;
+            if (dot(n, -ppl_P) < 0.0) n = -n;
+            // Test-textured surfaces don't reflect. (Full vertex light can't be used to spot
+            // light sources: brightly lit floors are at full light too.)
+            bool bReflects = tex_mode != TEX_MODE_TEST;
+            fragColorSSR = vec4(ssr_octEncode(n), bReflects ? ppl_P.y : -ppl_P.y, 1.0);
+        }
+    }
 fragColorEmiss = finalEmiss;
 
     //fragColor = vec4(face_normals_parallax.x, face_normals_parallax.y, face_normals_parallax.z, 1.0);

@@ -25,7 +25,7 @@ That breaks down into concrete engine work:
 | The look needs | How | Status |
 |---|---|---|
 | Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | Done (playtesting) |
-| Wet floors reflecting light strips, sky and objects | Screen-space reflections | Next |
+| Wet floors reflecting light strips, sky and objects | Screen-space reflections | Done (playtesting) |
 | Haze and light shafts | Depth-based haze, screen-space light shafts | Planned |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
@@ -54,11 +54,15 @@ That breaks down into concrete engine work:
 - [x] Art direction chosen
 - [x] Per-pixel lighting with wet highlights for dynamic lights ([plan](../docs/stage2-lighting-plan.md)), being playtested
 - [x] Highlights from glowing surfaces: built, but reads as blobs rather than wet; off by default
-- [ ] Screen-space reflections for wet, reflective floors
-- [ ] Coloured light from sabers
+- [x] Screen-space reflections for wet, reflective floors (being playtested)
+- [x] Coloured light from sabers, including enemy sabers
 - [ ] Haze and light shafts
 
 ## Latest
+
+Screen-space reflections, first pass: wet floors now mirror what's around them (top off, bottom on). Hangar floor reflecting the shuttle and light strips, the wet rooftop reflecting the figures, and Boc's saber throwing a pink pool.
+
+![Reflections off and on](../docs/screenshots/stage2-reflections-off-on.png)
 
 Per-pixel lighting, phase 1. The same light near the far wall: the original per-vertex lighting (left) barely shows it; per-pixel (right) gives a proper pool of light and a wet glint on the ceiling ring.
 

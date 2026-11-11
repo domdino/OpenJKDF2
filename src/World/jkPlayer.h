@@ -157,6 +157,8 @@ extern int jkPlayer_bPerPixelLighting;
 extern flex_t jkPlayer_specular;
 extern flex_t jkPlayer_wetness;
 extern int jkPlayer_bGlowLights;
+extern int jkPlayer_bReflections;
+extern flex_t jkPlayer_reflectionStrength;
 extern int jkPlayer_enableSSAO;
 extern flex_t jkPlayer_gamma;
 extern flex_t jkPlayer_hudScale;

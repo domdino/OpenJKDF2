@@ -82,6 +82,7 @@ typedef struct std3DFramebuffer
     GLuint tex1;
     GLuint tex2;
     GLuint tex3;
+    GLuint tex4; // Added (remaster): reflection data (octahedral normal, signed depth)
 
     std3DIntermediateFbo window;
     std3DIntermediateFbo main;
@@ -124,6 +125,14 @@ GLint attribute_v_invz = -1;
 static GLint uniform_ppl = -1, uniform_pplNumLights = -1, uniform_pplLightPos = -1, uniform_pplLightCol = -1;
 static GLint uniform_pplAtten = -1, uniform_pplProj = -1, uniform_pplScreen = -1, uniform_pplSpecular = -1, uniform_pplWetness = -1;
 static GLint uniform_pplNumGlow = -1, uniform_pplGlowPos = -1, uniform_pplGlowCol = -1;
+static GLint uniform_ssrWrite = -1, uniform_pplUpCam = -1;
+// Added (remaster): screen-space reflection pass, and the projection values it needs from
+// the last world draw of the frame.
+std3DSimpleTexStage std3D_ssrStage;
+static GLint std3D_ssrUniformProj = -1, std3D_ssrUniformScreen = -1, std3D_ssrUniformUpCam = -1;
+static GLint std3D_ssrUniformWetness = -1, std3D_ssrUniformStrength = -1;
+static float std3D_ssrProj[4], std3D_ssrScreen[4], std3D_ssrUpCam[3];
+static int std3D_ssrHaveCamera = 0;
 GLint uniform_mvp, uniform_tex, uniform_texEmiss, uniform_displacement_map, uniform_tex_mode, uniform_blend_mode, uniform_worldPalette, uniform_worldPaletteLights;
 GLint uniform_tint, uniform_filter, uniform_fade, uniform_add, uniform_emissiveFactor, uniform_albedoFactor;
 GLint uniform_light_mult, uniform_displacement_factor, uniform_iResolution;
@@ -258,10 +267,16 @@ void std3D_deleteIntermediateFbo(std3DIntermediateFbo* pFbo)
     glDeleteRenderbuffers(1, &pFbo->rbo);
 }
 
+// Added (remaster): reflections need per-pixel lighting (they reuse its position/normal rebuild).
+static int std3D_ReflectionsActive()
+{
+    return jkPlayer_bReflections && jkPlayer_bPerPixelLighting && !jkGuiBuildMulti_bRendering;
+}
+
 static void std3D_SetSceneDrawBuffers()
 {
-    static const GLenum bufs[4] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3};
-    glDrawBuffers(jkPlayer_enableSSAO ? 4 : 2, bufs);
+    static const GLenum bufs[5] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
+    glDrawBuffers(std3D_ReflectionsActive() ? 5 : (jkPlayer_enableSSAO ? 4 : 2), bufs);
 }
 
 void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* pFb)
@@ -328,6 +343,16 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
     
     // Attach fbTex to our currently bound framebuffer fb
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, pFb->tex3, 0);
+
+    // Added (remaster): reflection data target. Only drawn to when reflections are on.
+    glGenTextures(1, &pFb->tex4);
+    glBindTexture(GL_TEXTURE_2D, pFb->tex4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT4, GL_TEXTURE_2D, pFb->tex4, 0);
 
     // Set up our render buffer
     glGenRenderbuffers(1, &pFb->rbo);
@@ -401,6 +426,7 @@ void std3D_deleteFramebuffer(std3DFramebuffer* pFb)
     glDeleteTextures(1, &pFb->tex1);
     glDeleteTextures(1, &pFb->tex2);
     glDeleteTextures(1, &pFb->tex3);
+    glDeleteTextures(1, &pFb->tex4); // Added (remaster)
     glDeleteRenderbuffers(1, &pFb->rbo);
 
     std3D_deleteIntermediateFbo(&pFb->blur1);
@@ -537,6 +563,13 @@ int init_resources()
     std3D_gradeUniformLutSize = std3D_tryFindUniform(std3D_gradeStage.program, "lutSize");
     std3D_gradeUniformDomainMin = std3D_tryFindUniform(std3D_gradeStage.program, "lutDomainMin");
     std3D_gradeUniformDomainMax = std3D_tryFindUniform(std3D_gradeStage.program, "lutDomainMax");
+    // Added (remaster): screen-space reflections
+    if (!std3D_loadSimpleTexProgram("shaders/ssr", &std3D_ssrStage)) return false;
+    std3D_ssrUniformProj = std3D_tryFindUniform(std3D_ssrStage.program, "u_proj");
+    std3D_ssrUniformScreen = std3D_tryFindUniform(std3D_ssrStage.program, "u_screen");
+    std3D_ssrUniformUpCam = std3D_tryFindUniform(std3D_ssrStage.program, "u_upCam");
+    std3D_ssrUniformWetness = std3D_tryFindUniform(std3D_ssrStage.program, "u_wetness");
+    std3D_ssrUniformStrength = std3D_tryFindUniform(std3D_ssrStage.program, "u_strength");
 
     // Attributes/uniforms
     attribute_coord3d = std3D_tryFindAttribute(programDefault, "coord3d");
@@ -557,6 +590,8 @@ int init_resources()
     uniform_pplNumGlow = std3D_tryFindUniform(programDefault, "u_pplNumGlow");
     uniform_pplGlowPos = std3D_tryFindUniform(programDefault, "u_pplGlowPos");
     uniform_pplGlowCol = std3D_tryFindUniform(programDefault, "u_pplGlowCol");
+    uniform_ssrWrite = std3D_tryFindUniform(programDefault, "u_ssrWrite");
+    uniform_pplUpCam = std3D_tryFindUniform(programDefault, "u_pplUpCam");
     uniform_mvp = std3D_tryFindUniform(programDefault, "mvp");
     uniform_tex = std3D_tryFindUniform(programDefault, "tex");
     uniform_texEmiss = std3D_tryFindUniform(programDefault, "texEmiss");
@@ -797,6 +832,7 @@ void std3D_FreeResources()
     glDeleteProgram(programMenu);
     // Added (remaster): grading pass. The LUT is reloaded on next use.
     glDeleteProgram(std3D_gradeStage.program);
+    glDeleteProgram(std3D_ssrStage.program); // Added (remaster)
     if (std3D_gradeLutTex) glDeleteTextures(1, &std3D_gradeLutTex);
     std3D_gradeLutTex = 0;
     std3D_gradeLutSize = 0;
@@ -2694,6 +2730,19 @@ void std3D_DrawSceneFbo()
         std3D_DrawSimpleTex(&std3D_ssaoMixStage, pOut, std3D_pFb->ssaoBlur2.tex, std3D_pFb->tex0, 0, 0.0, 0.0, jkPlayer_gamma, 0);
     }
 
+    // Added (remaster): screen-space reflections, added on top of the composited scene.
+    if (std3D_ReflectionsActive() && std3D_ssrHaveCamera && std3D_ssrStage.program && !jkGuiBuildMulti_bRendering)
+    {
+        glUseProgram(std3D_ssrStage.program);
+        glUniform4fv(std3D_ssrUniformProj, 1, std3D_ssrProj);
+        glUniform4fv(std3D_ssrUniformScreen, 1, std3D_ssrScreen);
+        glUniform3fv(std3D_ssrUniformUpCam, 1, std3D_ssrUpCam);
+        glUniform1f(std3D_ssrUniformWetness, jkPlayer_wetness);
+        glUniform1f(std3D_ssrUniformStrength, jkPlayer_reflectionStrength);
+        glBlendFunc(GL_ONE, GL_ONE);
+        std3D_DrawSimpleTex(&std3D_ssrStage, pOut, std3D_pFb->tex0, std3D_pFb->tex4, 0, 0.0, 0.0, 0.0, 0);
+    }
+
     glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
     if (!draw_bloom)
         std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->tex1, 0, 0, 1.0, 1.0, jkPlayer_gamma, 0);
@@ -2954,6 +3003,7 @@ void std3D_DrawRenderList()
         int bPpl = jkPlayer_bPerPixelLighting && rdCamera_g_pCurCamera && rdCamera_g_pCurCamera->pCanvas
                    && !jkGuiBuildMulti_bRendering && attribute_v_invz >= 0;
         glUniform1i(uniform_ppl, bPpl);
+        glUniform1i(uniform_ssrWrite, bPpl && std3D_ReflectionsActive()); // Added (remaster)
         if (bPpl)
         {
             static float aPos[STD3D_PPL_MAX_LIGHTS * 4];
@@ -3002,6 +3052,22 @@ void std3D_DrawRenderList()
                         rdCamera_g_pCurCamera->focalLength, 0.0f);
             glUniform4f(uniform_pplScreen, internalWidth, internalHeight, width, height);
             glUniform1f(uniform_pplSpecular, jkPlayer_specular);
+
+            // Added (remaster): world up in camera space (floors reflect most), and the values
+            // the reflection pass needs later in the frame.
+            {
+                rdVector3 up = {0.0, 0.0, 1.0}, upCam;
+                rdMatrix_TransformVector34(&upCam, &up, &rdCamera_g_pCurCamera->orient);
+                glUniform3f(uniform_pplUpCam, upCam.x, upCam.y, upCam.z);
+                std3D_ssrUpCam[0] = upCam.x; std3D_ssrUpCam[1] = upCam.y; std3D_ssrUpCam[2] = upCam.z;
+                std3D_ssrProj[0] = rdCamera_g_pCurCamera->pCanvas->half_screen_width;
+                std3D_ssrProj[1] = rdCamera_g_pCurCamera->pCanvas->half_screen_height;
+                std3D_ssrProj[2] = rdCamera_g_pCurCamera->focalLength;
+                std3D_ssrProj[3] = 0.0f;
+                std3D_ssrScreen[0] = internalWidth; std3D_ssrScreen[1] = internalHeight;
+                std3D_ssrScreen[2] = width; std3D_ssrScreen[3] = height;
+                std3D_ssrHaveCamera = 1;
+            }
             glUniform1f(uniform_pplWetness, jkPlayer_wetness);
 
             // Glow lights: gathered once per frame (nearest in visible sectors), reused by

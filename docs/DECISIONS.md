@@ -200,3 +200,24 @@ Dom also supplied AI reimaginings of these exact views (plus 07yun, 10cargo, 14t
 - Debug: OPENJKDF2_PPL_DEBUG=1 logs the light list every 120 frames, actors seen by the gather, and saber colour lookup failures.
 
 **Update check off by default**: the engine checked GitHub for upstream releases on every launch (Little Snitch flagged it each time, as every rebuild changes the checksum). This fork shouldn't offer upstream builds anyway. `net_disableUpdates` now defaults to 1 and is set in the local saved settings.
+
+## 2026-11-11 - Screen-space reflections
+
+`r_reflections 1` (needs `r_perPixelLighting 1`; strength `r_reflectionStrength`, default 1; amount follows `r_wetness`). Off by default until playtested.
+
+**How it works**
+- The world shader writes a fifth render target (`tex4`, RGBA16F): octahedral camera-space normal, depth (negative = surface doesn't reflect), alpha 1 on solid surfaces. See-through faces write all zeros with alpha 0, so the blend modes leave the buffer untouched.
+- A post pass (`ssr_f.glsl`) runs after the scene is composited and before bloom. Per reflective pixel it rebuilds the position, marches the reflection ray in camera space (48 growing steps, then a 6-step binary refine against the stored depth), and adds the scene colour where it hits. Floors (normal close to world up) reflect most, walls 20%, with Fresnel boost at grazing angles and a fade at screen edges.
+- Debug view: a negative `r_reflectionStrength` colours pixels instead: green = hit, red = reflective but missed, blue = not reflective, cyan = amount ~0.
+
+**Bugs found on the way (worth remembering)**
+- Shaders are compiled into the binary at build time (embedded resources). Copying an edited .glsl into the app bundle does nothing; rebuild.
+- Solid surfaces draw with blend mode `D3DBLEND_ONE`; only flags 0x600 (`SRCALPHA`/`INVSRCALPHA`) are see-through. Treating `ONE` as additive silently disabled reflection data, and the wet highlights, on every solid surface.
+- "Vertex light at full brightness" is not a test for light sources: brightly lit floors are at full light too. Removed from both highlights and reflections.
+- Capture runs now set every remaster lighting setting explicitly; a leftover `r_glowLights` from an earlier run had leaked into a "reflections off" capture.
+
+**Result** (docs/screenshots/stage2-reflections-off-on.png, top off, bottom on): the hangar floor faintly mirrors the shuttle and wall strips; the Sarris rooftop reflects the figures in the wet stone. Subtle at default wetness 0.6, which suits a first pass. No measurable cost at 1280x960.
+
+**Limits**: only what's on screen can reflect (screen-space). Reflections of the sky and off-screen lights need environment probes later. The north star images go much further (glossy material maps, haze, stronger contrast), which is Stage 3 materials plus phase 3 atmosphere.
+
+Reference images added: northstar-later-levels-a/b (the later-level views reimagined), northstar-dream-saber-room and -2 (the saber room as a long-term mood target: saber-coloured pool, haze, red rim light).

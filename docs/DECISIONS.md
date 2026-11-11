@@ -115,3 +115,22 @@ A second AI reimagining of the same spawn room, same enemy pose as our capture v
 | Detailed corpse and enemy models | New models | 4 |
 
 Open question for Dom: north star 1 (clean, teal, readable) or north star 2 (grimy, wet, dark, atmospheric), or a blend. Affects the default grade, how strong the specular is, and whether haze and god rays are worth building.
+
+**Effect costs (1280x960 Retina window, Apple Silicon, vsync off, 900 frames each)**
+
+| Setting | avg fps | avg ms | p99 ms |
+|---|---|---|---|
+| Baseline (all off) | 208 / 200 (two runs) | 4.8 / 5.0 | 8.9 |
+| Texture filtering | 207 | 4.8 | 8.8 |
+| Bloom | 182 | 5.5 | 9.1 |
+| SSAO | 177 | 5.6 | 8.8 |
+| SSAA 1.5x | 145 | 6.9 | 12.8 |
+| SSAA 2x | 208 | 4.8 | 9.1 |
+| Grade (LUT + roll-off) | 224 | 4.5 | 8.3 |
+| All on (bloom, SSAO, grade, filtering, SSAA 1.5x) | 131 | 7.6 | 9.4 |
+
+- Honest read: everything is cheap at this size. Even all on stays above 130 fps, and p99 stays under 10 ms. Individual costs are mostly inside run-to-run noise: frame times jump between about 4.2 and 8.2 ms as the GPU changes clock states, and SSAA 2x coming out "free" while 1.5x looks slow is that noise, not a real result.
+- Good enough to decide: no need for MSAA, and nothing here is too expensive to leave on. Proper per-effect numbers need GPU timer queries and a fullscreen native-resolution run, which is about 5x the pixels. Worth doing once per-pixel lighting adds real load.
+- Contact sheet: docs/screenshots/stage2-effects-base-bloom-ssao-all.png (top: base, bloom; bottom: SSAO, all on with the teal test grade).
+
+**Capture mode, final form**: borderless window parked at -30000,-30000, background app (no Dock icon, no focus), never grabs or warps the mouse (logged as mousegrab=0), mouse input ignored, camera re-warped with the head levelled before timing. Hiding the window outright doesn't work on macOS: a hidden window has no drawable and everything renders black.

@@ -29,11 +29,11 @@ Built on [OpenJKDF2](https://github.com/shinyquagsire23/OpenJKDF2), the communit
 ### Stage 2 checklist
 
 - [x] Audit what the renderer already offers (bloom, SSAO, SSAA, filtering, FOV, frame cap are all built in)
-- [ ] Scripted screenshots and frame timing for before/after comparisons
-- [ ] HiDPI on by default on macOS
-- [ ] Mipmaps and anisotropic filtering for true-colour textures
-- [ ] Filmic tone mapping and colour-grade LUT (.cube) support
-- [ ] Measure the cost of bloom, SSAO and SSAA
+- [x] Scripted screenshots and frame timing for before/after comparisons (`scripts/capture.sh`, muted, never touches your saves)
+- [x] HiDPI on by default on macOS
+- [x] Mipmaps and anisotropic filtering for true-colour textures (visible once HD textures land in Stage 3)
+- [x] Colour grading: exposure, highlight roll-off and live-reloading .cube LUTs (`grade/`)
+- [x] Measure the cost of bloom, SSAO and SSAA (all cheap at Retina window size: 130+ fps with everything on)
 - [ ] Per-pixel lighting with normal and specular map support (plan first)
 
 ## Where it started

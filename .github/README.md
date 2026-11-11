@@ -1,49 +1,70 @@
-# Jedi Knight Remaster for Apple Silicon
+# Jedi Knight: Dark Forces II, remastered for Apple Silicon
 
-A personal, non-commercial project to make **Star Wars Jedi Knight: Dark Forces II** (1997) run natively on Apple Silicon Macs and look properly modern, while still feeling like Jedi Knight. It's a facelift, not a different game.
+**A personal project to rebuild the look of Star Wars Jedi Knight (1997) on a modern Mac, while keeping it unmistakably Jedi Knight.**
 
-Built on [OpenJKDF2](https://github.com/shinyquagsire23/OpenJKDF2), the community's function-by-function reimplementation of the original engine. This fork adds the remaster work on top and tracks upstream.
+![Today vs target: level 1 as it runs now (left) and the art direction it's heading towards (right)](../docs/screenshots/hero-today-vs-target.webp)
 
-**No game assets are included or will ever be committed.** You need your own copy of the game (the GOG version is recommended).
+*Left: the game today, running natively on Apple Silicon. Right: the art direction (AI concept art of the same room, used as a north star, not a promise).*
 
-## Goals
+---
 
-- Native arm64 macOS build at full Retina resolution, one command to build and run
-- Modern lighting: per-pixel lights with specular highlights, tuned bloom and ambient occlusion, filmic tone mapping and colour grading via LUTs
-- HD textures with proper material maps (normal, roughness, emissive), loaded alongside the originals without modifying the game files
-- New high-detail models for Kyle, stormtroopers and the lightsaber, with a Blender pipeline for the .3DO and .KEY formats
-- Upscaled, graded cutscenes played from modern video files
-- Then the same treatment for the expansion, Mysteries of the Sith
+## What this is
 
-## Milestones
+Jedi Knight is one of my all-time favourite games, and this fork is where I'm remastering it: native on Apple Silicon first, then modern lighting, HD materials, new models and upscaled cutscenes. The goal is the game as you remember it, rather than how it actually looked in 1997.
+
+The engine is [OpenJKDF2](https://github.com/shinyquagsire23/OpenJKDF2), the community's function-by-function reimplementation of the original engine. All the hard reverse-engineering credit goes to that project. Everything here is built on top of it and kept in sync with it.
+
+**What it isn't:** a new game, a mod pack or a commercial product. **No game assets are included or ever will be.** You need your own copy of the game (the GOG version is recommended).
+
+## Art direction
+
+The target is dark, wet, grimy and atmospheric: lived-in industrial rather than clean sci-fi. Light pools on wet metal, haze in the air, light shafts through skylights, dense blacks and a desaturated, warm-brown grade.
+
+That breaks down into concrete engine work:
+
+| The look needs | How | Status |
+|---|---|---|
+| Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | In progress |
+| Glints from skylights and glowing grates | Highlights from emissive and sky surfaces | Planned |
+| Haze and light shafts | Depth-based haze, screen-space light shafts | Planned |
+| Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
+| Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
+| Crisp, detailed, grimy surfaces | HD textures with roughness and normal maps | Stage 3 |
+| Detailed characters | New models through a Blender pipeline | Stage 4 |
+
+## Progress
 
 | Stage | What | Status |
 |---|---|---|
-| 1 | Native build on Apple Silicon, one-command build and run | Done (2026-11-11) |
-| 2 | Rendering: Retina, frame rate, filtering, tone mapping and LUT grading, per-pixel lighting | In progress |
-| 3 | HD textures: extraction tool, true-colour replacement loader, material maps | Not started |
+| 1 | Native build on Apple Silicon, one-command build and run | Done |
+| 2 | Rendering: Retina, filtering, colour grading, per-pixel lighting, atmosphere | In progress |
+| 3 | HD textures with material maps, true-colour replacement loader | Not started |
 | 4 | Models: Blender import/export for .3DO and .KEY, new Kyle and stormtroopers | Not started |
-| 5 | Cutscenes: modern video playback with the originals as fallback | Not started |
-| 6 | Mysteries of the Sith: same pipeline for the expansion | Not started |
+| 5 | Cutscenes: upscaled and graded, played from modern video files | Not started |
+| 6 | Mysteries of the Sith: the same treatment for the expansion | Not started |
 
 ### Stage 2 checklist
 
-- [x] Audit what the renderer already offers (bloom, SSAO, SSAA, filtering, FOV, frame cap are all built in)
-- [x] Scripted screenshots and frame timing for before/after comparisons (`scripts/capture.sh`, muted, never touches your saves)
-- [x] HiDPI on by default on macOS
-- [x] Mipmaps and anisotropic filtering for true-colour textures (visible once HD textures land in Stage 3)
-- [x] Colour grading: exposure, highlight roll-off and live-reloading .cube LUTs (`grade/`)
-- [x] Measure the cost of bloom, SSAO and SSAA (all cheap at Retina window size: 130+ fps with everything on)
-- [x] Art direction chosen: north star 2 (dark, wet, grimy); grimy starter grade
-- [ ] Per-pixel lighting with specular highlights (plan written: docs/stage2-lighting-plan.md, waiting for sign-off)
-- [ ] Highlights from glowing surfaces (skylights, grates) for the wet look
+- [x] Audit what the renderer already offers (bloom, SSAO, SSAA, filtering, FOV and frame cap are all built in)
+- [x] Silent, repeatable screenshot and frame-timing captures for before/after comparisons
+- [x] Retina (HiDPI) by default on macOS
+- [x] Mipmaps and anisotropic filtering for true-colour textures
+- [x] Colour grading: exposure, highlight roll-off, live-reloading .cube LUTs
+- [x] Measure the cost of bloom, SSAO and SSAA (130+ fps with everything on)
+- [x] Art direction chosen
+- [ ] Per-pixel lighting with specular highlights ([plan](../docs/stage2-lighting-plan.md))
+- [ ] Highlights from glowing surfaces (skylights, grates)
 - [ ] Haze and light shafts
 
-## Where it started
+## Latest
 
-![Stage 1 baseline, level 1](../docs/screenshots/stage1-baseline-01narshadda.webp)
+Built-in effects, all running natively. Top: original, bloom. Bottom: ambient occlusion, everything on with a test grade.
 
-## Building (macOS, Apple Silicon)
+![Effects comparison](../docs/screenshots/stage2-effects-base-bloom-ssao-all.png)
+
+Decisions, findings and dead ends are logged as I go in [docs/DECISIONS.md](../docs/DECISIONS.md).
+
+## Building it yourself (macOS, Apple Silicon)
 
 ```sh
 git clone --recursive https://github.com/domdino/OpenJKDF2.git
@@ -52,14 +73,14 @@ brew install cmake imagemagick openal-soft glew libpng openssl@3 protobuf libmod
 scripts/build.sh
 ```
 
-Extract your copy of the game into `gamedata/jk1/` (for the GOG installer: `innoextract --language english -I app <installer.exe>` and move the contents of `app/` there), then:
+Extract your own copy of the game into `gamedata/jk1/`. For the GOG installer: `innoextract --language english -I app <installer.exe>`, then move the contents of `app/` there. Then:
 
 ```sh
 scripts/run.sh
 ```
 
-Decisions, findings and dead ends are logged in [docs/DECISIONS.md](../docs/DECISIONS.md).
+Colour grades live in `grade/`. Turn grading on in the engine's settings (`r_enableGrade 1`), and the game reloads `grade/default.cube` live whenever it changes.
 
 ## Credits and legal
 
-All engine credit goes to the OpenJKDF2 project and its contributors. Star Wars, Jedi Knight and related marks are the property of Lucasfilm and Disney. This project is not affiliated with or endorsed by them, includes no original game assets, and is for personal use only.
+All engine credit goes to the [OpenJKDF2](https://github.com/shinyquagsire23/OpenJKDF2) project and its contributors. Star Wars, Jedi Knight and related marks are the property of Lucasfilm and Disney. This project is not affiliated with or endorsed by them, includes no original game assets, and is for personal, non-commercial use only. Concept images are AI-generated references for art direction.

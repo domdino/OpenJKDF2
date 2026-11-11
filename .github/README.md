@@ -26,7 +26,7 @@ That breaks down into concrete engine work:
 |---|---|---|
 | Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | Done (playtesting) |
 | Wet floors reflecting light strips, sky and objects | Screen-space reflections | Done (playtesting) |
-| Haze and light shafts | Depth-based haze, screen-space light shafts | Planned |
+| Haze and light shafts | Depth-based haze lit by the scene, screen-space light shafts | Done (playtesting) |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
 | Crisp, detailed, grimy surfaces | HD textures with roughness and normal maps | Stage 3 |
@@ -56,9 +56,13 @@ That breaks down into concrete engine work:
 - [x] Highlights from glowing surfaces: built, but reads as blobs rather than wet; off by default
 - [x] Screen-space reflections for wet, reflective floors (being playtested)
 - [x] Coloured light from sabers, including enemy sabers
-- [ ] Haze and light shafts
+- [x] Haze and light shafts (being playtested)
 
 ## Latest
+
+Haze and light shafts, first pass (left off, right on): the hangar gets a hazy glow around the shuttle and light spilling from the wall strips; the rooftop's sky and far building sit back in hazy air.
+
+![Haze and light shafts off and on](../docs/screenshots/stage2-haze-shafts-off-on.png)
 
 Screen-space reflections, first pass: wet floors now mirror what's around them (top off, bottom on). Hangar floor reflecting the shuttle and light strips, the wet rooftop reflecting the figures, and Boc's saber throwing a pink pool.
 

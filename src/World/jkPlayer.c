@@ -72,6 +72,11 @@ flex_t jkPlayer_wetness = 0.6;                              // Added (remaster)
 int jkPlayer_bGlowLights = 0;                               // Added (remaster): experimental, off by default
 int jkPlayer_bReflections = 0;                              // Added (remaster)
 flex_t jkPlayer_reflectionStrength = 1.0;                   // Added (remaster)
+int jkPlayer_bHaze = 0;                                     // Added (remaster)
+flex_t jkPlayer_hazeDensity = 0.08;                         // Added (remaster): per world unit
+flex_t jkPlayer_hazeStrength = 1.0;                         // Added (remaster)
+int jkPlayer_bLightShafts = 0;                              // Added (remaster)
+flex_t jkPlayer_shaftStrength = 1.0;                        // Added (remaster)
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -215,6 +220,13 @@ void jkPlayer_StartupVars()
     // Screen-space reflections on wet surfaces (floors most). Needs r_perPixelLighting; uses r_wetness.
     sithCvar_RegisterBool("r_reflections",              0,                          &jkPlayer_bReflections,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_reflectionStrength",       1.0,                        &jkPlayer_reflectionStrength,       CVARFLAG_LOCAL);
+    // Atmosphere: distance haze lit by the scene, and light shafts from glowing surfaces.
+    // Both need r_perPixelLighting (they use its depth buffer).
+    sithCvar_RegisterBool("r_haze",                     0,                          &jkPlayer_bHaze,                    CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_hazeDensity",              0.08,                       &jkPlayer_hazeDensity,              CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_hazeStrength",             1.0,                        &jkPlayer_hazeStrength,             CVARFLAG_LOCAL);
+    sithCvar_RegisterBool("r_lightShafts",              0,                          &jkPlayer_bLightShafts,             CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_shaftStrength",            1.0,                        &jkPlayer_shaftStrength,            CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -275,6 +287,11 @@ void jkPlayer_ResetVars()
     jkPlayer_bGlowLights = 0;
     jkPlayer_bReflections = 0;
     jkPlayer_reflectionStrength = 1.0;
+    jkPlayer_bHaze = 0;
+    jkPlayer_hazeDensity = 0.08;
+    jkPlayer_hazeStrength = 1.0;
+    jkPlayer_bLightShafts = 0;
+    jkPlayer_shaftStrength = 1.0;
     jkPlayer_gamma = 1.0;
     jkPlayer_bEnableJkgm = 1;
     jkPlayer_bEnableTexturePrecache = 1;
@@ -632,6 +649,11 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveBool(ext_fpath, "glowlights", jkPlayer_bGlowLights);
         stdJSON_SaveBool(ext_fpath, "reflections", jkPlayer_bReflections);
         stdJSON_SaveFloat(ext_fpath, "reflectionstrength", jkPlayer_reflectionStrength);
+        stdJSON_SaveBool(ext_fpath, "haze", jkPlayer_bHaze);
+        stdJSON_SaveFloat(ext_fpath, "hazedensity", jkPlayer_hazeDensity);
+        stdJSON_SaveFloat(ext_fpath, "hazestrength", jkPlayer_hazeStrength);
+        stdJSON_SaveBool(ext_fpath, "lightshafts", jkPlayer_bLightShafts);
+        stdJSON_SaveFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -848,6 +870,11 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_bGlowLights = stdJSON_GetBool(ext_fpath, "glowlights", jkPlayer_bGlowLights);
         jkPlayer_bReflections = stdJSON_GetBool(ext_fpath, "reflections", jkPlayer_bReflections);
         jkPlayer_reflectionStrength = stdJSON_GetFloat(ext_fpath, "reflectionstrength", jkPlayer_reflectionStrength);
+        jkPlayer_bHaze = stdJSON_GetBool(ext_fpath, "haze", jkPlayer_bHaze);
+        jkPlayer_hazeDensity = stdJSON_GetFloat(ext_fpath, "hazedensity", jkPlayer_hazeDensity);
+        jkPlayer_hazeStrength = stdJSON_GetFloat(ext_fpath, "hazestrength", jkPlayer_hazeStrength);
+        jkPlayer_bLightShafts = stdJSON_GetBool(ext_fpath, "lightshafts", jkPlayer_bLightShafts);
+        jkPlayer_shaftStrength = stdJSON_GetFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

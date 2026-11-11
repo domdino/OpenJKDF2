@@ -99,6 +99,8 @@ typedef struct std3DFramebuffer
     //std3DIntermediateFbo ssaoBlur3;
 
     std3DIntermediateFbo grade; // Added (remaster): half-float scene composite for the grading pass
+    std3DIntermediateFbo hazeBlur1; // Added (remaster): blurred scene that lights the haze
+    std3DIntermediateFbo hazeBlur2;
 
     GLuint rbo;
     int32_t w;
@@ -133,6 +135,13 @@ static GLint std3D_ssrUniformProj = -1, std3D_ssrUniformScreen = -1, std3D_ssrUn
 static GLint std3D_ssrUniformWetness = -1, std3D_ssrUniformStrength = -1;
 static float std3D_ssrProj[4], std3D_ssrScreen[4], std3D_ssrUpCam[3];
 static int std3D_ssrHaveCamera = 0;
+// Added (remaster): atmosphere passes, and the glow lights of the current frame (camera
+// space), which the shaft pass aims at.
+std3DSimpleTexStage std3D_hazeStage;
+std3DSimpleTexStage std3D_shaftStage;
+static GLint std3D_shaftUniformNum = -1, std3D_shaftUniformPos = -1, std3D_shaftUniformCol = -1;
+static int std3D_frameNumGlow = 0;
+static float std3D_frameGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], std3D_frameGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
 GLint uniform_mvp, uniform_tex, uniform_texEmiss, uniform_displacement_map, uniform_tex_mode, uniform_blend_mode, uniform_worldPalette, uniform_worldPaletteLights;
 GLint uniform_tint, uniform_filter, uniform_fade, uniform_add, uniform_emissiveFactor, uniform_albedoFactor;
 GLint uniform_light_mult, uniform_displacement_factor, uniform_iResolution;
@@ -273,10 +282,20 @@ static int std3D_ReflectionsActive()
     return jkPlayer_bReflections && jkPlayer_bPerPixelLighting && !jkGuiBuildMulti_bRendering;
 }
 
+// Added (remaster): the extra depth/normal target is written whenever something reads it.
+static int std3D_AtmosphereActive()
+{
+    return (jkPlayer_bHaze || jkPlayer_bLightShafts) && jkPlayer_bPerPixelLighting && !jkGuiBuildMulti_bRendering;
+}
+static int std3D_GBufferActive()
+{
+    return std3D_ReflectionsActive() || std3D_AtmosphereActive();
+}
+
 static void std3D_SetSceneDrawBuffers()
 {
     static const GLenum bufs[5] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
-    glDrawBuffers(std3D_ReflectionsActive() ? 5 : (jkPlayer_enableSSAO ? 4 : 2), bufs);
+    glDrawBuffers(std3D_GBufferActive() ? 5 : (jkPlayer_enableSSAO ? 4 : 2), bufs);
 }
 
 void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* pFb)
@@ -404,6 +423,14 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
         std3D_generateIntermediateFbo(Window_xSize, Window_ySize, &pFb->grade, 1);
     }
 
+    // Added (remaster): low-res blurred copies of the scene; their colour lights the haze.
+    if (jkPlayer_bHaze)
+    {
+        pFb->enable_extra |= 8;
+        std3D_generateIntermediateFbo(width / 4, height / 4, &pFb->hazeBlur1, 1);
+        std3D_generateIntermediateFbo(width / 16, height / 16, &pFb->hazeBlur2, 1);
+    }
+
     pFb->main.fbo = pFb->fbo;
     pFb->main.tex = pFb->tex1;
     pFb->main.rbo = pFb->rbo;
@@ -440,6 +467,8 @@ void std3D_deleteFramebuffer(std3DFramebuffer* pFb)
     //std3D_deleteIntermediateFbo(&pFb->ssaoBlur3);
 
     std3D_deleteIntermediateFbo(&pFb->grade); // Added (remaster)
+    std3D_deleteIntermediateFbo(&pFb->hazeBlur1);
+    std3D_deleteIntermediateFbo(&pFb->hazeBlur2);
 }
 
 void std3D_swapFramebuffers()
@@ -570,6 +599,12 @@ int init_resources()
     std3D_ssrUniformUpCam = std3D_tryFindUniform(std3D_ssrStage.program, "u_upCam");
     std3D_ssrUniformWetness = std3D_tryFindUniform(std3D_ssrStage.program, "u_wetness");
     std3D_ssrUniformStrength = std3D_tryFindUniform(std3D_ssrStage.program, "u_strength");
+    // Added (remaster): atmosphere
+    if (!std3D_loadSimpleTexProgram("shaders/haze", &std3D_hazeStage)) return false;
+    if (!std3D_loadSimpleTexProgram("shaders/shafts", &std3D_shaftStage)) return false;
+    std3D_shaftUniformNum = std3D_tryFindUniform(std3D_shaftStage.program, "u_numShafts");
+    std3D_shaftUniformPos = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftPos");
+    std3D_shaftUniformCol = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftCol");
 
     // Attributes/uniforms
     attribute_coord3d = std3D_tryFindAttribute(programDefault, "coord3d");
@@ -833,6 +868,8 @@ void std3D_FreeResources()
     // Added (remaster): grading pass. The LUT is reloaded on next use.
     glDeleteProgram(std3D_gradeStage.program);
     glDeleteProgram(std3D_ssrStage.program); // Added (remaster)
+    glDeleteProgram(std3D_hazeStage.program);
+    glDeleteProgram(std3D_shaftStage.program);
     if (std3D_gradeLutTex) glDeleteTextures(1, &std3D_gradeLutTex);
     std3D_gradeLutTex = 0;
     std3D_gradeLutSize = 0;
@@ -916,6 +953,7 @@ int std3D_StartScene()
         || (!(std3D_pFb->enable_extra & 1) && jkPlayer_enableBloom)
         || (!(std3D_pFb->enable_extra & 2) && jkPlayer_enableSSAO)
         || (!!(std3D_pFb->enable_extra & 4) != !!jkPlayer_enableGrade) // Added (remaster)
+        || (!!(std3D_pFb->enable_extra & 8) != !!jkPlayer_bHaze)
         || (jkPlayer_enableGrade && (std3D_pFb->grade.w != Window_xSize || std3D_pFb->grade.h != Window_ySize)))
     {
         std3D_deleteFramebuffer(std3D_pFb);
@@ -2743,6 +2781,56 @@ void std3D_DrawSceneFbo()
         std3D_DrawSimpleTex(&std3D_ssrStage, pOut, std3D_pFb->tex0, std3D_pFb->tex4, 0, 0.0, 0.0, 0.0, 0);
     }
 
+    // Added (remaster): haze. Distance fog from the depth target, coloured by a heavily
+    // blurred copy of the scene so it glows near lights. Alpha-blended over the scene.
+    if (jkPlayer_bHaze && std3D_AtmosphereActive() && (std3D_pFb->enable_extra & 8) && std3D_hazeStage.program)
+    {
+        glDisable(GL_BLEND);
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur1, std3D_pFb->tex0, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->hazeBlur2, std3D_pFb->hazeBlur1.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        std3D_DrawSimpleTex(&std3D_hazeStage, pOut, std3D_pFb->hazeBlur2.tex, std3D_pFb->tex4, 0,
+                            jkPlayer_hazeDensity, jkPlayer_hazeStrength, 0.0, 0);
+    }
+
+    // Added (remaster): light shafts streaming from the strongest glow lights on screen.
+    if (jkPlayer_bLightShafts && std3D_AtmosphereActive() && std3D_ssrHaveCamera && std3D_shaftStage.program && std3D_frameNumGlow > 0)
+    {
+        // Pick up to 4: in front of the camera, near the screen, brightest and closest first.
+        float aPos[16], aCol[16], aScore[4];
+        int n = 0;
+        for (int i = 0; i < std3D_frameNumGlow; i++)
+        {
+            float x = std3D_frameGlowPos[i*4+0], y = std3D_frameGlowPos[i*4+1], z = std3D_frameGlowPos[i*4+2];
+            if (y < 0.05f) continue;
+            float cx = std3D_ssrProj[0] + x * std3D_ssrProj[2] / y;
+            float cy = std3D_ssrProj[1] - z * std3D_ssrProj[2] / y;
+            float u = cx / std3D_ssrScreen[0], v = 1.0f - cy / std3D_ssrScreen[1];
+            if (u < -0.2f || u > 1.2f || v < -0.2f || v > 1.2f) continue;
+            float score = std3D_frameGlowCol[i*4+3] / (y > 0.3f ? y : 0.3f);
+            int slot = n;
+            if (n == 4) {
+                slot = 0;
+                for (int k = 1; k < 4; k++) if (aScore[k] < aScore[slot]) slot = k;
+                if (score <= aScore[slot]) continue;
+            } else n++;
+            aScore[slot] = score;
+            aPos[slot*4+0] = u; aPos[slot*4+1] = v; aPos[slot*4+2] = std3D_frameGlowCol[i*4+3]; aPos[slot*4+3] = 0.0f;
+            aCol[slot*4+0] = std3D_frameGlowCol[i*4+0]; aCol[slot*4+1] = std3D_frameGlowCol[i*4+1];
+            aCol[slot*4+2] = std3D_frameGlowCol[i*4+2]; aCol[slot*4+3] = 1.0f;
+        }
+        if (n)
+        {
+            glUseProgram(std3D_shaftStage.program);
+            glUniform1i(std3D_shaftUniformNum, n);
+            glUniform4fv(std3D_shaftUniformPos, n, aPos);
+            glUniform4fv(std3D_shaftUniformCol, n, aCol);
+            glBlendFunc(GL_ONE, GL_ONE);
+            std3D_DrawSimpleTex(&std3D_shaftStage, pOut, std3D_pFb->tex1, std3D_pFb->tex4, std3D_pFb->tex0, jkPlayer_shaftStrength, 0.0, 0.0, 0);
+        }
+    }
+
     glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
     if (!draw_bloom)
         std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->tex1, 0, 0, 1.0, 1.0, jkPlayer_gamma, 0);
@@ -3003,7 +3091,7 @@ void std3D_DrawRenderList()
         int bPpl = jkPlayer_bPerPixelLighting && rdCamera_g_pCurCamera && rdCamera_g_pCurCamera->pCanvas
                    && !jkGuiBuildMulti_bRendering && attribute_v_invz >= 0;
         glUniform1i(uniform_ppl, bPpl);
-        glUniform1i(uniform_ssrWrite, bPpl && std3D_ReflectionsActive()); // Added (remaster)
+        glUniform1i(uniform_ssrWrite, bPpl && std3D_GBufferActive()); // Added (remaster)
         if (bPpl)
         {
             static float aPos[STD3D_PPL_MAX_LIGHTS * 4];
@@ -3072,16 +3160,18 @@ void std3D_DrawRenderList()
 
             // Glow lights: gathered once per frame (nearest in visible sectors), reused by
             // every world draw in that frame.
-            static int lastGlowFrame = -1, numGlow = 0;
-            static float aGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], aGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
+            static int lastGlowFrame = -1;
             if (lastGlowFrame != std3D_frameCount) {
                 lastGlowFrame = std3D_frameCount;
-                numGlow = jkPlayer_bGlowLights ? sithGlowLights_Gather(rdCamera_g_pCurCamera, aGlowPos, aGlowCol, SITHGLOWLIGHTS_MAX_GATHER) : 0;
+                // Gathered for glow highlights and for light shafts (which aim at them).
+                std3D_frameNumGlow = (jkPlayer_bGlowLights || jkPlayer_bLightShafts)
+                    ? sithGlowLights_Gather(rdCamera_g_pCurCamera, std3D_frameGlowPos, std3D_frameGlowCol, SITHGLOWLIGHTS_MAX_GATHER) : 0;
             }
+            int numGlow = jkPlayer_bGlowLights ? std3D_frameNumGlow : 0;
             glUniform1i(uniform_pplNumGlow, numGlow);
             if (numGlow) {
-                glUniform4fv(uniform_pplGlowPos, numGlow, aGlowPos);
-                glUniform4fv(uniform_pplGlowCol, numGlow, aGlowCol);
+                glUniform4fv(uniform_pplGlowPos, numGlow, std3D_frameGlowPos);
+                glUniform4fv(uniform_pplGlowCol, numGlow, std3D_frameGlowCol);
             }
         }
     }

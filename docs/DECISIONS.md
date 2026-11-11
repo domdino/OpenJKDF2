@@ -221,3 +221,16 @@ Dom also supplied AI reimaginings of these exact views (plus 07yun, 10cargo, 14t
 **Limits**: only what's on screen can reflect (screen-space). Reflections of the sky and off-screen lights need environment probes later. The north star images go much further (glossy material maps, haze, stronger contrast), which is Stage 3 materials plus phase 3 atmosphere.
 
 Reference images added: northstar-later-levels-a/b (the later-level views reimagined), northstar-dream-saber-room and -2 (the saber room as a long-term mood target: saber-coloured pool, haze, red rim light).
+
+## 2026-11-11 - Stage 2 phase 3: haze and light shafts
+
+Both off by default, both need `r_perPixelLighting 1` (they read the depth target the world pass writes; it's now written whenever reflections, haze or shafts are on).
+
+**Haze** (`r_haze`, `r_hazeDensity` default 0.08 per world unit, `r_hazeStrength`): fog = 1 - exp(-density x depth), capped at 0.75, alpha-blended over the scene after reflections and before bloom. Its colour comes from the scene blurred twice (1/4 then 1/16 resolution) plus a small dark base, so haze glows with nearby light (pink near a saber, red near red strips) instead of flat grey. Where nothing was drawn it counts as 40 units away.
+
+**Light shafts** (`r_lightShafts`, `r_shaftStrength`): screen-space light scattering towards up to 4 glow lights (phase 2 positions): in front of the camera, near the screen, ranked by intensity over distance. Each pixel samples 32 steps towards each light with decay 0.95, accumulating the glow buffer plus a bright-pass of the scene (luminance above 0.7, so white strips and sky count), fading with screen distance from the light. A per-pixel jittered start removes 32-step banding.
+- First version was nearly invisible (2% change at 4x strength) and banded: the glow buffer alone is mostly dark. The bright-pass and jitter fixed both.
+
+**Result** (docs/screenshots/stage2-haze-shafts-off-on.png, left off, right on): hangar gets a hazy glow around the shuttle and soft light spilling from the wall strips; the Sarris rooftop's sky and far building sit back in hazy air. Subtle, which suits defaults. No measurable frame cost at 1280x960. Note: the two Sarris shots aren't framed identically (that level's start view shifted between runs).
+
+**Not yet**: shafts don't check occlusion (depth target is bound but unused), and there's no sky-sourced shaft (the Sarris storm or a skylight) since the sky isn't a glow light. Both are natural next steps if the look calls for stronger rays.

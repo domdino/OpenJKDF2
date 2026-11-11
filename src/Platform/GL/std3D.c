@@ -1427,6 +1427,111 @@ static void std3D_PresentSWWorld(void)
 }
 #endif
 
+// Added (remaster): HD replacement cutscene frame (see Main/jkCutsceneHD.h). Uploaded by
+// jkCutscene whenever the HD decoder has a new frame; drawn by std3D_DrawMenu in place of the
+// palettised SMK picture, while subtitles and the pause text still come from the menu buffer.
+static GLuint std3D_cutsceneTex = 0;
+static int std3D_cutsceneTexW = 0, std3D_cutsceneTexH = 0;
+static int std3D_bCutsceneHd = 0;
+
+void std3D_SetCutsceneFrame(const uint8_t* bgra, int w, int h, int stride)
+{
+    if (Main_bHeadless || !bgra || w <= 0 || h <= 0) return;
+    if (std3D_cutsceneTex == 0 || std3D_cutsceneTexW != w || std3D_cutsceneTexH != h)
+    {
+        if (std3D_cutsceneTex) glDeleteTextures(1, &std3D_cutsceneTex);
+        glGenTextures(1, &std3D_cutsceneTex);
+        glBindTexture(GL_TEXTURE_2D, std3D_cutsceneTex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+        std3D_cutsceneTexW = w;
+        std3D_cutsceneTexH = h;
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, std3D_cutsceneTex);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, stride / 4);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, blank_tex);
+    std3D_bCutsceneHd = 1;
+}
+
+void std3D_ClearCutsceneFrame(void)
+{
+    std3D_bCutsceneHd = 0;
+    if (std3D_cutsceneTex && !Main_bHeadless) glDeleteTextures(1, &std3D_cutsceneTex);
+    std3D_cutsceneTex = 0;
+    std3D_cutsceneTexW = std3D_cutsceneTexH = 0;
+}
+
+// Draws the HD frame fitted to the original video's box (x, y, w, h in window pixels),
+// keeping the HD file's own aspect ratio, centred.
+static void std3D_DrawCutsceneHD(float x, float y, float w, float h)
+{
+    float aspect = (float)std3D_cutsceneTexW / (float)std3D_cutsceneTexH;
+    float dw = w, dh = w / aspect;
+    if (dh > h + 0.5f && h > 0) {
+        // Taller than the original box: let it grow downwards to the window, then shrink to fit.
+        float maxH = (float)Window_ySize - y;
+        if (dh > maxH) { dh = maxH; dw = dh * aspect; }
+    }
+    float dx = x + (w - dw) * 0.5f;
+    float dy = y + (h - dh) * 0.5f;
+    if (dy < 0) dy = 0;
+
+    D3DVERTEX v[4];
+    memset(v, 0, sizeof(v));
+    v[0].x = dx;      v[0].y = dy;      v[0].tu = 0; v[0].tv = 0;
+    v[1].x = dx;      v[1].y = dy + dh; v[1].tu = 0; v[1].tv = 1;
+    v[2].x = dx + dw; v[2].y = dy + dh; v[2].tu = 1; v[2].tv = 1;
+    v[3].x = dx + dw; v[3].y = dy;      v[3].tu = 1; v[3].tv = 0;
+    for (int i = 0; i < 4; i++) v[i].color = 0xFFFFFFFF;
+    GLushort idx[6] = { 1, 0, 2, 0, 3, 2 };
+
+    float width = (float)Window_xSize, height = (float)Window_ySize;
+    float scaleX = 1.0f / (width / 2.0f), scaleY = 1.0f / (height / 2.0f);
+    float d3dmat[16] = {
+        scaleX, 0, 0, 0,
+        0, -scaleY, 0, 0,
+        0, 0, 1, 0,
+        -(width / 2) * scaleX, (height / 2) * scaleY, -1, 1
+    };
+
+    glUseProgram(std3D_uiProgram.program);
+    glViewport(0, 0, Window_xSize, Window_ySize);
+    glBlendFunc(GL_ONE, GL_ZERO);
+    glUniformMatrix4fv(std3D_uiProgram.uniform_mvp, 1, GL_FALSE, d3dmat);
+    glUniform2f(std3D_uiProgram.uniform_iResolution, width, height);
+    glUniform1f(std3D_uiProgram.uniform_param1, 0.0);
+    glUniform1f(std3D_uiProgram.uniform_param2, 1.0);
+    glUniform1f(std3D_uiProgram.uniform_param3, jkPlayer_gamma);
+    glUniform1i(std3D_uiProgram.uniform_tex, 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, std3D_cutsceneTex);
+
+    glBindBuffer(GL_ARRAY_BUFFER, menu_vbo_all);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STREAM_DRAW);
+    glEnableVertexAttribArray(std3D_uiProgram.attribute_coord3d);
+    glEnableVertexAttribArray(std3D_uiProgram.attribute_v_color);
+    glEnableVertexAttribArray(std3D_uiProgram.attribute_v_uv);
+    glVertexAttribPointer(std3D_uiProgram.attribute_coord3d, 3, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, x));
+    glVertexAttribPointer(std3D_uiProgram.attribute_v_color, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, color));
+    glVertexAttribPointer(std3D_uiProgram.attribute_v_uv, 2, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, tu));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, menu_ibo_triangle);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(idx), idx, GL_STREAM_DRAW);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
+    glDisableVertexAttribArray(std3D_uiProgram.attribute_coord3d);
+    glDisableVertexAttribArray(std3D_uiProgram.attribute_v_color);
+    glDisableVertexAttribArray(std3D_uiProgram.attribute_v_uv);
+
+    glBindTexture(GL_TEXTURE_2D, blank_tex);
+    glUseProgram(programMenu);
+}
+
 void std3D_DrawMenu()
 {
     if (Main_bHeadless) return;
@@ -1578,8 +1683,6 @@ void std3D_DrawMenu()
         GL_tmpVerticesAmt = 0;
         GL_tmpTrisAmt = 0;
 
-        glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
-
         int video_height = Main_bMotsCompat ? 350 : 300;
         int subs_y = 350;
         int subs_h = 130;
@@ -1614,8 +1717,14 @@ void std3D_DrawMenu()
 
         //printf("%f %f, %f %f %f, %d %d\n", sub_x, pause_x, upscale, upscale2, upscale3, Window_xSize, Window_ySize);
 
-        // Main View
-        std3D_DrawMenuSubrect(0, 50, 640, video_height, shift_x + 0, shift_y + 50, upscale);
+        // Main View: the HD replacement frame if one is playing, else the original SMK picture
+        if (std3D_bCutsceneHd && std3D_cutsceneTex) {
+            std3D_DrawCutsceneHD(shift_x, shift_y + 50, 640 * upscale, video_height * upscale);
+        }
+        glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
+        if (!(std3D_bCutsceneHd && std3D_cutsceneTex)) {
+            std3D_DrawMenuSubrect(0, 50, 640, video_height, shift_x + 0, shift_y + 50, upscale);
+        }
 
         // Subtitles
         if (jkCutscene_dword_55B750) {

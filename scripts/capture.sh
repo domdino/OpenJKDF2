@@ -15,7 +15,9 @@
 #
 # Env: CAPTURE_MAP (default 01narshadda.jkl), CAPTURE_DELAY (s, default 8),
 #      CAPTURE_FRAMES (default 600), CAPTURE_HD (1 = use hd/jkgm textures, 0 = originals), CAPTURE_WARP ("x y z pitch yaw roll", camera
-#      position; each run prints the warp it ended at, so a good view can be reused)
+#      position; each run prints the warp it ended at, so a good view can be reused),
+#      CAPTURE_VIDEO (e.g. 'video\\01-02a.smk': shoot that cutscene CAPTURE_DELAY s in),
+#      CAPTURE_HDVIDEO (folder of HD cutscene replacements, default hd/video)
 # Output: logs/captures/NAME.png and NAME.log; the stats line is printed.
 set -e
 
@@ -39,6 +41,10 @@ for item in JK.EXE Episode Resource MUSIC; do
     [ -e "$CAPROOT/$item" ] || ln -s "$GAME/$item" "$CAPROOT/$item"
 done
 [ -e "$CAPROOT/grade" ] || ln -s "$ROOT/grade" "$CAPROOT/grade"
+# HD cutscenes: CAPTURE_HDVIDEO picks the folder (default hd/video).
+rm -f "$CAPROOT/hdvideo"
+HDVIDEO="${CAPTURE_HDVIDEO:-$ROOT/hd/video}"
+[ -d "$HDVIDEO" ] && ln -s "$HDVIDEO" "$CAPROOT/hdvideo"
 # HD textures: on unless CAPTURE_HD=0 (for before/after comparisons).
 rm -f "$CAPROOT/jkgm"
 if [ "${CAPTURE_HD:-1}" = "1" ] && [ -d "$ROOT/hd/jkgm" ]; then
@@ -67,6 +73,7 @@ OPENJKDF2_CAPTURE_CVARS="$BASELINE $*" \
 OPENJKDF2_CAPTURE_WARP="$WARP" \
 OPENJKDF2_CAPTURE_DELAY="${CAPTURE_DELAY:-8}" \
 OPENJKDF2_CAPTURE_FRAMES="${CAPTURE_FRAMES:-600}" \
+OPENJKDF2_CAPTURE_VIDEO="${CAPTURE_VIDEO:-}" \
     script -q /dev/null "$BIN" -autostart -sp -episode JK1 -map "${CAPTURE_MAP:-01narshadda.jkl}" \
     < /dev/null > "$OUT_DIR/$NAME.log" 2>&1 || true
 

@@ -33,6 +33,10 @@ extern "C" {
 
 #include "../jk.h"
 
+#ifdef MACOS
+#include "Main/jkCutsceneHD.h" // Added (remaster): HD replacement cutscenes
+#endif
+
 #ifdef LINUX
 #include "external/fcaseopen/fcaseopen.h"
 #endif
@@ -61,6 +65,25 @@ static int jkCutscene_audioFlip = 0;
 static flex64_t last_displayFrame = 0;
 static flex64_t last_audioUs = 0;
 static flex64_t extraUs = 0;
+
+#ifdef MACOS
+// Added (remaster): HD replacement picture, kept in step with the SMK, which still drives
+// timing, audio and subtitles. The HD frame is looked up by time, so the HD file can have
+// any frame rate: between SMK frames the time advances with the wall clock.
+static uint32_t jkCutscene_hdShownFrame = 0;
+
+static void jkCutscene_UpdateHD(void)
+{
+    if (!jkCutsceneHD_IsOpen()) return;
+    flex64_t sinceUs = last_displayFrame ? ((flex64_t)Linux_TimeUs() - last_displayFrame) : 0;
+    if (sinceUs > jkCutscene_smk_usf) sinceUs = jkCutscene_smk_usf;
+    if (sinceUs < 0) sinceUs = 0;
+    double t = ((double)jkCutscene_hdShownFrame * (double)jkCutscene_smk_usf + (double)sinceUs) / 1000000.0;
+    int w, h, stride, bNew;
+    const uint8_t* px = jkCutsceneHD_FrameAt(t, &w, &h, &stride, &bNew);
+    if (px && bNew) std3D_SetCutsceneFrame(px, w, h, stride);
+}
+#endif
 extern int openjkdf2_bIsKVM;
 
 // Smush
@@ -393,6 +416,13 @@ int jkCutscene_sub_421310(char* fpath)
         smk_enable_audio(jkCutscene_smk, 1, 1); // metadata track
         smk_first(jkCutscene_smk);
 
+#ifdef MACOS
+        jkCutscene_hdShownFrame = 0;
+        if (jkPlayer_bHdCutscenes && jkCutsceneHD_Open(tmp)) {
+            stdPlatform_Printf("OpenJKDF2: HD cutscene replacement found for %s\n", tmp);
+        }
+#endif
+
         int32_t len;
         uint8_t* stream;
 
@@ -547,6 +577,12 @@ int jkCutscene_sub_421410()
         smk_close(jkCutscene_smk);
     }
     jkCutscene_bSmkValid = 0;
+
+#ifdef MACOS
+    jkCutsceneHD_Close();
+    std3D_ClearCutsceneFrame();
+    jkCutscene_hdShownFrame = 0;
+#endif
 
     if (jkCutscene_frameBuf) {
         stdDisplay_VBufferFree(jkCutscene_frameBuf);
@@ -925,6 +961,10 @@ int jkCutscene_smacker_process()
 
     jkCutscene_smacker_smusher_audio_queue();
 
+#ifdef MACOS
+    jkCutscene_UpdateHD();
+#endif
+
     if (delta <= usPerFrame) return 0;
     //printf("%f %f %f\n", delta, usPerFrame, extraUs);
 
@@ -966,6 +1006,11 @@ int jkCutscene_smacker_process()
     extraUs = 0.0;
 
     jkCutscene_smacker_process_audio();
+
+#ifdef MACOS
+    smk_info_all(jkCutscene_smk, &jkCutscene_hdShownFrame, NULL, NULL);
+    jkCutscene_UpdateHD();
+#endif
 
     _memcpy(stdDisplay_masterPalette, smk_get_palette(jkCutscene_smk), 0x300);
 

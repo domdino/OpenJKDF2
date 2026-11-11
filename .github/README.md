@@ -40,7 +40,7 @@ That breaks down into concrete engine work:
 | 2 | Rendering: Retina, filtering, colour grading, per-pixel lighting, atmosphere | In progress |
 | 3 | HD textures with material maps, true-colour replacement loader | In progress |
 | 4 | Models: Blender import/export for .3DO and .KEY, new Kyle and stormtroopers | Not started |
-| 5 | Cutscenes: upscaled and graded, played from modern video files | Not started |
+| 5 | Cutscenes: upscaled and graded, played from modern video files | In progress |
 | 6 | Mysteries of the Sith: the same treatment for the expansion | Not started |
 
 ### Stage 2 checklist
@@ -73,7 +73,18 @@ That breaks down into concrete engine work:
 - [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
 - [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
 
+### Stage 5 checklist
+
+- [x] Extract all 25 cutscenes (640x300, 15 fps, 33 minutes) to ProRes for upscaling and grading (`scripts/extract_cutscenes.sh`)
+- [x] Engine plays HD replacements (H.264, HEVC or ProRes, any resolution or frame rate) in place of the originals, with the originals as fallback and subtitles kept
+- [ ] Upscale, interpolate to 23.976 fps and grade all 25
+- [ ] Playtest every cutscene in game
+
 ## Latest
+
+Stage 5 has started. Every cutscene is extracted for upscaling, and the engine now plays HD replacement videos (H.264, HEVC or ProRes, any resolution or frame rate) in place of the 640x300 originals, decoded on the Mac's media engine. The original keeps running underneath for timing, sound and subtitles. Left: original. Right: a black-and-white 1080p test file proving the swap.
+
+![Original vs HD replacement cutscene](../docs/screenshots/stage5-hd-cutscene-test.png)
 
 Stage 3 has started. Top: the remastered look on the original textures. Bottom: the same with HD textures from the community Neural Upscale pack (the Sarris building and Boc's rock wall gain real detail). The game's own loader already reads HD texture packs; new tools extract every original texture for upscaling and rebuild packs whose files lost their names.
 

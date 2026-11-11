@@ -324,3 +324,24 @@ Dom: reflections in the hangar smeared diagonally off the wall light strips ("su
 **Test** with Dom's fast run (`out/jk_fast`, PBRify only): 30 imported, 29 matched a palette (66 signatures). Level 1 spawn view: 10 Texture God textures confirmed loading via `OPENJKDF2_JKGM_DEBUG`. The visible difference is small (2.8%), as expected from the colour-locked fast pass (docs/screenshots/stage3-texturegod-fast-zoom.png). Defaults on everything else: hangar floor reflects a little less, Sarris rock highlight broader and dimmer (docs/screenshots/stage3-material-defaults.png). Frame rate unaffected (hangar 152, Sarris 164 fps, GPU idle).
 
 **Unverified**: normal-map handedness (JK's V direction vs the PNG's) can't be judged on the fast pass; check on the first full Texture God run, where bumps should light from the correct side. If inverted, flip the green channel in the shader.
+
+## 2026-11-11 - Stage 5: HD cutscenes
+
+**Originals.** 25 Smacker files in `Resource/VIDEO` (GOG copy), all 640x300, 15.0015 fps (66,660 us per frame), 22 kHz stereo, 32.8 minutes in total. Each SMK also carries a data track with subtitle indices per frame, which the engine draws in the bar under the picture.
+
+**Extraction: `scripts/extract_cutscenes.sh`** writes `hd/video_src/<NAME>.mov`: ProRes 422 HQ, 10-bit, native size and rate, PCM audio, converted to Rec.709 and tagged so grading apps read it right. 3.5 GB, about 20 s for all. Checked against a direct decode: identical apart from 4:2:2 chroma on hard edges.
+
+**Playback design.** The SMK still plays as before and stays the master clock, the audio and the subtitle source. If `hdvideo/<NAME>.mov|mp4|m4v` exists in the game folder (run.sh links it to `hd/video`), its picture replaces the SMK's. The HD frame is chosen by time: SMK frame index x 66.66 ms, plus wall-clock time since that frame (capped at one frame), so higher frame rates play smoothly. So:
+- resolution, frame rate and codec are free (H.264, HEVC, ProRes; anything AVFoundation reads);
+- the HD file must keep the original's length. Interpolate to 23.976 fps, don't conform/retime;
+- aspect: drawn at the original's width, centred on the original picture area; a taller frame grows downwards, then shrinks to fit;
+- audio still comes from the SMK. An HD audio track is ignored for now (could be added if the audio gets remastered);
+- `r_hdCutscenes 0` turns it off for A/B.
+
+Decoding is AVFoundation (`src/Platform/macOS/jkCutsceneHD_avf.m`): hardware HEVC/H.264/ProRes, no new dependencies, BGRA frames uploaded to one GL texture (with mips) and drawn with the UI shader in place of the SMK picture in `std3D_DrawMenu`. macOS only; other platforms compile it out and play the originals.
+
+Rejected: FFmpeg libraries (big dependency, licensing, nothing gained on a Mac); replacing the SMK entirely (would lose subtitles and the existing audio sync).
+
+**Test**: the capture tool can now shoot cutscenes (`CAPTURE_VIDEO='./Resource/VIDEO/03-04A.SMK'`, plus `CAPTURE_HDVIDEO=<folder>`); the engine's capture timer now also runs during cutscene frames. A 1920x900 HEVC 23.976 fps test file (black and white with a red box, `hd/video_test`) replaced 03-04A in place, with frame rate unchanged (63 fps menu-capped either way). docs/screenshots/stage5-hd-cutscene-test.png.
+
+Not yet checked: playing a full cutscene with sound end to end in a real session, and pausing (the HD frame holds; resumes with the SMK).

@@ -79,6 +79,7 @@ int jkPlayer_bLightShafts = 0;                              // Added (remaster)
 flex_t jkPlayer_shaftStrength = 1.0;                        // Added (remaster)
 int jkPlayer_anisotropy = 8;                                // Added (remaster): 1-16
 flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
+int jkPlayer_bHdCutscenes = 1;                              // Added (remaster): play hdvideo/ replacements
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -233,6 +234,8 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterInt("r_anisotropy",                8,                          &jkPlayer_anisotropy,               CVARFLAG_LOCAL);
     // How blurry reflections are: 0 = mirror, 1 = very blurry. Until per-texture roughness exists.
     sithCvar_RegisterFlex("r_reflectionRoughness",      0.5,                        &jkPlayer_reflectionRoughness,      CVARFLAG_LOCAL);
+    // Play HD replacement cutscenes from hdvideo/<name>.mov|mp4|m4v when they exist (macOS).
+    sithCvar_RegisterBool("r_hdCutscenes",              1,                          &jkPlayer_bHdCutscenes,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -705,6 +708,7 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
         stdJSON_SaveInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
         stdJSON_SaveFloat(ext_fpath, "reflectionroughness", jkPlayer_reflectionRoughness);
+        stdJSON_SaveBool(ext_fpath, "hdcutscenes", jkPlayer_bHdCutscenes);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -928,6 +932,7 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_shaftStrength = stdJSON_GetFloat(ext_fpath, "shaftstrength", jkPlayer_shaftStrength);
         jkPlayer_anisotropy = stdJSON_GetInt(ext_fpath, "anisotropy", jkPlayer_anisotropy);
         jkPlayer_reflectionRoughness = stdJSON_GetFloat(ext_fpath, "reflectionroughness", jkPlayer_reflectionRoughness);
+        jkPlayer_bHdCutscenes = stdJSON_GetBool(ext_fpath, "hdcutscenes", jkPlayer_bHdCutscenes);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

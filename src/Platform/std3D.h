@@ -112,6 +112,9 @@ void std3D_PurgeEntireTextureCache();
 int std3D_ClearZBuffer();
 int std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is_alpha_tex, int no_alpha);
 void std3D_DrawMenu();
+// Added (remaster): HD replacement cutscene frame, drawn instead of the SMK picture.
+void std3D_SetCutsceneFrame(const uint8_t* bgra, int w, int h, int stride);
+void std3D_ClearCutsceneFrame(void);
 void std3D_DrawSceneFbo();
 void std3D_FreeResources();
 void std3D_InitializeViewport(rdRect *viewRect);

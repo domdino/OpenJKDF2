@@ -69,6 +69,8 @@
 
 #if defined(MACOS)
 #include <stdbool.h>
+
+static void Window_DevCaptureTick(void); // Added (remaster)
 #import <Carbon/Carbon.h>
 #endif
 
@@ -1331,6 +1333,7 @@ void Window_SdlUpdate()
 #endif
             std3D_DrawMenu();
             std3D_EndScene();
+            if (jkCutscene_isRendering) Window_DevCaptureTick(); // Added (remaster): captures can shoot cutscenes
             SDL_GL_SwapWindow(displayWindow);
         }
         else {
@@ -1505,6 +1508,21 @@ static void Window_DevCaptureTick(void)
     }
 
     if (state == 1) {
+        // OPENJKDF2_CAPTURE_VIDEO=video\01-02a.smk: once the level is up (3 s), play that
+        // cutscene and time/shoot it instead, CAPTURE_DELAY seconds into it.
+        static int bVideoStarted = 0;
+        const char* pVideo = getenv("OPENJKDF2_CAPTURE_VIDEO");
+        if (pVideo && pVideo[0] && !bVideoStarted) {
+            if (now - tMark < 3000000000ull) return;
+            stdString_SafeStrCopy(jkMain_aLevelJklFname, pVideo, 128);
+            if (jkGuiRend_menuNestDepth) jkGuiRend_bStateChangePending = 1;
+            jkSmack_stopTick = 1;
+            jkSmack_nextGuiState = JK_GAMEMODE_VIDEO2;
+            printf("CAPTURE: playing video %s\n", pVideo);
+            bVideoStarted = 1;
+            tMark = now;
+            return;
+        }
         if (now - tMark >= delayNs) {
             // Re-place the camera just before timing so every run frames the same view:
             // warp (if given) and level the head pitch.

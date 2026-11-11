@@ -259,3 +259,17 @@ Result: docs/screenshots/stage2-remaster-preset-off-on.png (top original, bottom
 **Open questions**
 - Where the other ~1360 images are. Possibly in JKR 1.0/2.0.1 (in the Trash, recoverable) or a file table I haven't decoded. Worth checking before upscaling those textures ourselves.
 - The upscale pack is ~2020-era neural upscaling: good detail, but colour only. The grimy wet look needs roughness (and ideally normal) maps, which neither the pack nor the loader has yet.
+
+## 2026-11-11 - Stage 3: more of the pack, palettes, and the CD
+
+**Sources.** Remastered 2.0.1 adds 1462 PNGs (JKR 1.0 is byte-identical to 2.0.1). With 3.3 that's 1838 unique images for ~2400 pack slots, so ~600 textures aren't in any installer. Same-name packs from different installers are merged.
+
+**Matching, second round**
+- A palette-independent structure pass (brightness-pattern correlation plus a brightness-difference penalty, cut-off 0.12) placed ~190 more, and the colour pass now also requires the brightness pattern to correlate (plain colour distance let any two dark textures "match").
+- But it exposed the real problem: **level palettes.** Each level colours textures through its own colormap (21 in JK1), so one MAT can be lit city windows in one level and dark wall panels in another. The engine checks MAT names before hashes, and a name match applies one image in every level: the hangar's red floor strips turned yellow, its walls became city windows, and Boc's wall blew out orange.
+- Hash-only with the pack's own signatures fixed that but dropped almost everything (the engine's hashes rarely equal the pack's recorded ones).
+- **`tools/jkgm_signatures.py`**: for each entry, renders the original under every level palette, keeps the palettes that reproduce the HD image, and writes the engine's own hash for each (MD5 over width, height and pixels converted to 16-bit through the palette, 565 for alpha textures, 1555 otherwise, as jkgm_get_tex_hash does). Names are dropped. 950 entries, 2197 signatures.
+- Result: palette-correct and safe (hangar untouched, nothing wrong anywhere in the capture set), but few textures apply in these three views; the Sarris building's HD panels that showed with name matching don't appear. **Next step:** confirm my hashes equal the engine's (add a debug print of jkgm_get_tex_hash for textures in view) before trusting coverage numbers.
+- `scripts/build_hd_pack.sh` now takes several installers and runs rebuild then signatures.
+
+**Original CD-ROM (Dom's boxed copy).** Two disc rips (data + CD audio tracks, cue sheets) and box/manual scans. Disc 1's data track (MODE1/2352) converts to ISO by keeping bytes 16..2064 of each sector. Res2.gob and Res1hi.gob are byte-identical to GOG's; JK1.GOB and JK.EXE differ (GOG ships the 1.01 patch). So the extracted textures are the genuine originals. The CD audio is the original soundtrack, lossless; OpenJKDF2 reads CD numbering (MUSIC/1/TrackN, MUSIC/2/TrackN), so a higher-quality soundtrack encode is possible later.

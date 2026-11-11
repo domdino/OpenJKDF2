@@ -52,6 +52,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-score", type=float, default=0.03,
                     help="reject albedo matches worse than this (mean colour error 0..1)")
+    ap.add_argument("--name-match", dest="hash_only", action="store_false",
+                    help="let structure-pass entries match by MAT name too (default: pixel hash only for them)")
+    ap.add_argument("--max-struct", type=float, default=0.12,
+                    help="second pass: reject structure matches worse than this (1 - correlation)")
     args = ap.parse_args()
 
     # Candidates and metadata files
@@ -75,7 +79,21 @@ def main():
                         metas.append((p, j))
                 except Exception:
                     pass
-    print("%d candidate PNGs, %d metadata files" % (len(cands), len(metas)))
+    # The same pack can come from several installers (e.g. Remastered 2.0.1 and 3.3):
+    # merge metadata with the same pack name, keeping each material entry once.
+    merged = {}
+    for p, meta in metas:
+        key = (meta.get("name") or p).lower()
+        if key not in merged:
+            merged[key] = (p, dict(meta, materials=list(meta["materials"])))
+            continue
+        have = {m.get("name") for m in merged[key][1]["materials"]}
+        for m in meta["materials"]:
+            if m.get("name") not in have:
+                merged[key][1]["materials"].append(m)
+                have.add(m.get("name"))
+    metas = list(merged.values())
+    print("%d candidate PNGs, %d packs" % (len(cands), len(metas)))
 
     # Entries needing an albedo / emissive image (by target file name, deduplicated)
     targets = {}   # (pack_idx, filename) -> {"kind", "orig": (w,h,thumb)}
@@ -100,10 +118,10 @@ def main():
     def assign(kind, scorer):
         pairs = []
         for key, t in targets.items():
-            if t["kind"] != kind or key in placed:
+            if t["kind"] != (kind if kind != "albedo_struct" else "albedo_map") or key in placed:
                 continue
             # Glow and displacement maps only go with an entry whose colour map matched.
-            if kind != "albedo_map" and t["albedo"] not in placed:
+            if kind not in ("albedo_map", "albedo_struct") and t["albedo"] not in placed:
                 continue
             for ci, c in enumerate(cands):
                 if ci in used or not same_aspect(c["size"], t["orig"][:2]):
@@ -115,11 +133,33 @@ def main():
                 continue
             if kind == "albedo_map" and score > args.max_score:
                 continue   # no confident match: leave it out rather than guess
-            placed[key] = (ci, score)
+            if kind == "albedo_struct" and score > args.max_struct:
+                continue
+            placed[key] = (ci, score, kind)
             used.add(ci)
 
     # Albedo: plain colour distance to the original.
-    assign("albedo_map", lambda c, t: float(np.abs(c["thumb"] - t["orig"][2]).mean()))
+    # Albedo: colour distance plus a structure term. Plain colour distance alone lets any
+    # two mostly-dark textures "match" (a dark hangar wall panel took a dark city-windows
+    # image), so the brightness pattern has to line up too.
+    def colour_score(c, t):
+        err = float(np.abs(c["thumb"] - t["orig"][2]).mean())
+        ol = luma(t["orig"][2]).ravel(); cl = luma(c["thumb"]).ravel()
+        corr = float(np.corrcoef(ol, cl)[0, 1]) if ol.std() > 0.01 and cl.std() > 0.01 else 1.0
+        return err + 0.1 * (1.0 - corr)
+    assign("albedo_map", colour_score)
+    # Second pass for what's left: brightness pattern only, which doesn't care which colour
+    # palette the original was extracted with (many levels use their own colormaps).
+    def struct_score(c, t):
+        ol = luma(t["orig"][2]).ravel(); cl = luma(c["thumb"]).ravel()
+        if ol.std() < 0.03 or cl.std() < 0.03:
+            return 9.0       # too flat to tell apart reliably
+        # Plus a brightness-difference penalty: smooth gradients (glows) correlate with
+        # each other easily even when one is bright orange and the other nearly black.
+        return float(1.0 - np.corrcoef(ol, cl)[0, 1]) + 0.5 * abs(float(ol.mean() - cl.mean()))
+    n_before = len(placed)
+    assign("albedo_struct", struct_score)
+    print("structure pass placed %d more" % (len(placed) - n_before))
     # Emissive: mostly dark, bright where the original is bright (glowing texels).
     def emissive_score(c, t):
         ol = luma(t["orig"][2]); cl = luma(c["thumb"])
@@ -140,7 +180,7 @@ def main():
         pdir = os.path.join(args.out, pack)
         os.makedirs(pdir, exist_ok=True)
         n = 0
-        for (pmi, fn), (ci, score) in placed.items():
+        for (pmi, fn), (ci, score, _kind) in placed.items():
             if pmi != mi:
                 continue
             shutil.copyfile(cands[ci]["path"], os.path.join(pdir, fn))
@@ -159,6 +199,14 @@ def main():
                 if e.get(k) and not os.path.exists(os.path.join(pdir, e[k])):
                     e.pop(k, None)
                     e.pop(fk, None)
+            # Structure-pass matches were made for another level's palette. The engine checks
+            # MAT names first, and a name match applies one image in every level, so those
+            # turned a red-striped hangar floor yellow. They only apply by pixel hash (per
+            # palette). Colour-pass matches keep name matching: the engine's hashes rarely
+            # equal the pack's signatures, and name matching is what makes them show up.
+            akey = (mi, e["albedo_map"])
+            if args.hash_only and placed.get(akey, (0, 0, ""))[2] == "albedo_struct" and e.get("replaces_signatures"):
+                e.pop("replaces", None)
             kept.append(e)
         out_meta = dict(meta)
         out_meta["materials"] = kept
@@ -172,7 +220,7 @@ def main():
 
     import collections
     hist = collections.Counter()
-    for key, (ci, score) in placed.items():
+    for key, (ci, score, _kind) in placed.items():
         if targets[key]["kind"] == "albedo_map":
             hist[min(int(score / 0.02), 10)] += 1
     print("albedo match error histogram (0.02 buckets):", dict(sorted(hist.items())))

@@ -233,11 +233,21 @@ static int rdPolyline_DrawBlade(rdThing *pLine, rdMatrix34 *pOrient)
     flex_t nx = uz, nz = -ux; // the original blade quad's "+" side
     flex_t lr = mag / R;
 
+    // The ends are extended along the blade's real 3D direction (screen-plane part normalised to
+    // 1), so the quad's centre line runs exactly through the emitter and the tip and the
+    // blade-space UVs line up with them in perspective. (Extending flat in the screen plane put
+    // the core's start off the emitter whenever the blade runs towards or away from the camera.)
+    flex_t uy = 0.0f;
+    if (mag > 0.000001f) {
+        uy = (tip.y - base.y) / mag;
+        if (uy > 3.0f) uy = 3.0f;   // blade almost pointing at the camera: keep the caps sane
+        if (uy < -3.0f) uy = -3.0f;
+    }
     // Same corner order (and winding) as the original blade quad: tip+, tip-, base-, base+.
-    polylineVerts[0].x = tip.x + (ux + nx) * R;  polylineVerts[0].z = tip.z + (uz + nz) * R;  polylineVerts[0].y = tip.y;
-    polylineVerts[1].x = tip.x + (ux - nx) * R;  polylineVerts[1].z = tip.z + (uz - nz) * R;  polylineVerts[1].y = tip.y;
-    polylineVerts[2].x = base.x - (ux + nx) * R; polylineVerts[2].z = base.z - (uz + nz) * R; polylineVerts[2].y = base.y;
-    polylineVerts[3].x = base.x - (ux - nx) * R; polylineVerts[3].z = base.z - (uz - nz) * R; polylineVerts[3].y = base.y;
+    polylineVerts[0].x = tip.x + (ux + nx) * R;  polylineVerts[0].z = tip.z + (uz + nz) * R;  polylineVerts[0].y = tip.y + uy * R;
+    polylineVerts[1].x = tip.x + (ux - nx) * R;  polylineVerts[1].z = tip.z + (uz - nz) * R;  polylineVerts[1].y = tip.y + uy * R;
+    polylineVerts[2].x = base.x - (ux + nx) * R; polylineVerts[2].z = base.z - (uz + nz) * R; polylineVerts[2].y = base.y - uy * R;
+    polylineVerts[3].x = base.x - (ux - nx) * R; polylineVerts[3].z = base.z - (uz - nz) * R; polylineVerts[3].y = base.y - uy * R;
     rdPolyline_aBladeUVs[0].x = 1.0f;  rdPolyline_aBladeUVs[0].y = lr + 1.0f;
     rdPolyline_aBladeUVs[1].x = -1.0f; rdPolyline_aBladeUVs[1].y = lr + 1.0f;
     rdPolyline_aBladeUVs[2].x = -1.0f; rdPolyline_aBladeUVs[2].y = -1.0f;

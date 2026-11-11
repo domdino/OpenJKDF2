@@ -214,6 +214,7 @@ void saberBladeMain()
     float halo = exp(-d * 5.0) * 0.16;
     float edge = 1.0 - smoothstep(0.8, 1.0, d);
     float s = saberStrength * edge;
+    s *= exp(-max(-f_uv.y, 0.0) * 5.0); // below the emitter the glow dies quickly instead of washing over the hilt
     vec3 sat = col * col;                     // deeper colour for the sheath, so it doesn't wash to white
     float ripple = 0.8 + 0.4 * saberNoise(along * 9.0 - t * 23.0); // fast plasma ripples in the sheath
     vec3 c = ((sat * 0.75 + col * 0.15) * sheath * hum * ripple + col * halo + vec3(1.0) * core * 0.95) * s;

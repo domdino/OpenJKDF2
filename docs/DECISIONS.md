@@ -464,3 +464,5 @@ Dom: "a realistic light emitting glow and plasma animation would make a big diff
 **Captures** gained `CAPTURE_SEQ=1`: every timed frame is saved and `capture.sh` makes an MP4 (60 fps with `r_fpslimit=60`). Before/after: docs/screenshots/stage4-saber-blade.jpg and .mp4.
 
 **Not yet**: a swing trail (motion smear between the previous and current blade), and a check on enemy sabers in a Dark Jedi fight.
+
+**Fix (Dom: "not lining up to the saber at the bottom")**: the capsule's ends were extended flat in the screen plane, so when the blade runs towards or away from the camera (always, in first person) the quad's centre line missed the emitter and the core started above the hilt. The ends now extend along the blade's real 3D direction (depth part capped for blades pointing at the camera), so the core starts exactly at the emitter; the glow also fades quickly below the emitter instead of washing over the hilt.

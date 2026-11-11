@@ -7,6 +7,7 @@
 #   NAME            output name, e.g. bloom-on (keep it short)
 #   setting=value   engine cvars, e.g. r_enableBloom=1 r_enableSSAO=1
 #                   r_ssaaMultiple=2 r_enableTextureFilter=1 r_fov=74,
+#                   r_enableGrade=1 r_gradeLut=grade/identity.cube r_gradeStrength=0.5,
 #                   plus hidpi=0/1 and fullscreen=0/1
 #
 # Baseline for every run: HiDPI on, windowed, vsync off, no fps cap, all effects
@@ -37,8 +38,9 @@ mkdir -p "$OUT_DIR" "$CAPROOT/player"
 for item in JK.EXE Episode Resource MUSIC; do
     [ -e "$CAPROOT/$item" ] || ln -s "$GAME/$item" "$CAPROOT/$item"
 done
+[ -e "$CAPROOT/grade" ] || ln -s "$ROOT/grade" "$CAPROOT/grade"
 
-BASELINE="hidpi=1 fullscreen=0 r_enableVsync=0 r_fpslimit=0 r_enableBloom=0 r_enableSSAO=0 r_ssaaMultiple=1 r_enableTextureFilter=0"
+BASELINE="hidpi=1 fullscreen=0 r_enableVsync=0 r_fpslimit=0 r_enableBloom=0 r_enableSSAO=0 r_ssaaMultiple=1 r_enableTextureFilter=0 r_enableGrade=0"
 
 # Muted: OpenAL Soft (sound effects) and SDL audio (music, cutscenes) both get
 # silent drivers. "script" gives the engine a tty so its log isn't buffered.

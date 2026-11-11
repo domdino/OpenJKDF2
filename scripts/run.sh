@@ -39,6 +39,8 @@ else
         exit 1
     fi
     export OPENJKDF2_ROOT="$ROOT/gamedata/jk1"
+    # Colour grading LUTs live in the repo (grade/); the engine looks for them in the data folder.
+    [ -e "$ROOT/gamedata/jk1/grade" ] || ln -s "$ROOT/grade" "$ROOT/gamedata/jk1/grade"
 fi
 
 "$BIN" "$@" 2>&1 | tee "$ROOT/logs/last_run.log"

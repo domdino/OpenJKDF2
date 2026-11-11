@@ -758,6 +758,7 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
                 glTexImage2D(GL_TEXTURE_2D, 0, entry->albedo_hasAlpha ? GL_RGBA8 : GL_RGB8, entry->albedo_width, entry->albedo_height, 0,  entry->albedo_hasAlpha ?  GL_BGRA : GL_BGR,     GL_UNSIGNED_BYTE, data);
+                std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 1); // Added (remaster): mips + anisotropic
                 //glGetTexImage(GL_TEXTURE_2D, 0, entry->albedo_hasAlpha ? GL_BGRA : GL_BGR, GL_UNSIGNED_BYTE, data);
                 //printf("%x\n", *(uint32_t*)data);
                 texture->texture_id = image_texture;
@@ -826,6 +827,7 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
                 glTexImage2D(GL_TEXTURE_2D, 0, entry->emissive_hasAlpha ? GL_RGBA8 : GL_RGB8, entry->emissive_width, entry->emissive_height, 0,  entry->emissive_hasAlpha ? GL_RGBA : GL_RGB,     GL_UNSIGNED_BYTE, data);
+                std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 1); // Added (remaster): mips + anisotropic
                 //glGetTexImage(GL_TEXTURE_2D, 0, entry->emissive_hasAlpha ? GL_BGRA : GL_BGR, GL_UNSIGNED_BYTE, data);
                 //printf("%x\n", *(uint32_t*)data);
                 texture->emissive_texture_id = emiss_texture;
@@ -879,6 +881,7 @@ int jkgm_std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
                 glTexImage2D(GL_TEXTURE_2D, 0, entry->displacement_hasAlpha ? GL_RGBA8 : GL_RGB8, entry->displacement_width, entry->displacement_height, 0,  entry->displacement_hasAlpha ? GL_RGBA : GL_RGB,     GL_UNSIGNED_BYTE, data);
+                std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 1); // Added (remaster): mips + anisotropic
                 //glGetTexImage(GL_TEXTURE_2D, 0, entry->displacement_hasAlpha ? GL_BGRA : GL_BGR, GL_UNSIGNED_BYTE, data);
                 //printf("%x\n", *(uint32_t*)data);
                 texture->displacement_texture_id = displace_texture;

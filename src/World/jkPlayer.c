@@ -61,6 +61,11 @@ int jkPlayer_enableSSAO = 0;
 int jkPlayer_fpslimit = 0;
 int jkPlayer_enableVsync = 1;
 flex_t jkPlayer_ssaaMultiple = 1.0;
+int jkPlayer_enableGrade = 0;                              // Added (remaster)
+char jkPlayer_gradeLut[SITHCVAR_MAX_STRLEN] = "grade/default.cube"; // Added (remaster)
+flex_t jkPlayer_gradeStrength = 1.0;                        // Added (remaster)
+int jkPlayer_gradeToneCurve = 1;                            // Added (remaster)
+flex_t jkPlayer_gradeExposure = 1.0;                        // Added (remaster)
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
 int jkPlayer_bEnableTexturePrecache = 1;
@@ -187,6 +192,12 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterInt("r_fpslimit",                  0,                          &jkPlayer_fpslimit,                 CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_enableVsync",              1,                          &jkPlayer_enableVsync,              CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_ssaaMultiple",             1.0,                        &jkPlayer_ssaaMultiple,             CVARFLAG_LOCAL);
+    // Added (remaster): colour grading. LUT path is relative to the game data folder.
+    sithCvar_RegisterBool("r_enableGrade",              0,                          &jkPlayer_enableGrade,              CVARFLAG_LOCAL);
+    sithCvar_RegisterStr("r_gradeLut",                  "grade/default.cube",       &jkPlayer_gradeLut,                 CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_gradeStrength",            1.0,                        &jkPlayer_gradeStrength,            CVARFLAG_LOCAL);
+    sithCvar_RegisterBool("r_gradeToneCurve",           1,                          &jkPlayer_gradeToneCurve,           CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_gradeExposure",            1.0,                        &jkPlayer_gradeExposure,            CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_bEnableJkgm",              1,                          &jkPlayer_bEnableJkgm,              CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_bEnableTexturePrecache",   1,                          &jkPlayer_bEnableTexturePrecache,   CVARFLAG_LOCAL|CVARFLAG_READONLY);
@@ -236,6 +247,11 @@ void jkPlayer_ResetVars()
     jkPlayer_fpslimit = 0;
     jkPlayer_enableVsync = 1;
     jkPlayer_ssaaMultiple = 1.0;
+    jkPlayer_enableGrade = 0; // Added (remaster)
+    stdString_SafeStrCopy(jkPlayer_gradeLut, "grade/default.cube", sizeof(jkPlayer_gradeLut));
+    jkPlayer_gradeStrength = 1.0;
+    jkPlayer_gradeToneCurve = 1;
+    jkPlayer_gradeExposure = 1.0;
     jkPlayer_gamma = 1.0;
     jkPlayer_bEnableJkgm = 1;
     jkPlayer_bEnableTexturePrecache = 1;
@@ -583,6 +599,10 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveBool(ext_fpath, "enablevsync", jkPlayer_enableVsync);
         stdJSON_SaveBool(ext_fpath, "enablebloom", jkPlayer_enableBloom);
         stdJSON_SaveFloat(ext_fpath, "ssaamultiple", jkPlayer_ssaaMultiple);
+        stdJSON_SaveBool(ext_fpath, "enablegrade", jkPlayer_enableGrade); // Added (remaster)
+        stdJSON_SaveFloat(ext_fpath, "gradestrength", jkPlayer_gradeStrength);
+        stdJSON_SaveBool(ext_fpath, "gradetonecurve", jkPlayer_gradeToneCurve);
+        stdJSON_SaveFloat(ext_fpath, "gradeexposure", jkPlayer_gradeExposure);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -789,6 +809,10 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_enableVsync = stdJSON_GetBool(ext_fpath, "enablevsync", jkPlayer_enableVsync);
         jkPlayer_enableBloom = stdJSON_GetBool(ext_fpath, "enablebloom", jkPlayer_enableBloom);
         jkPlayer_ssaaMultiple = stdJSON_GetFloat(ext_fpath, "ssaamultiple", jkPlayer_ssaaMultiple);
+        jkPlayer_enableGrade = stdJSON_GetBool(ext_fpath, "enablegrade", jkPlayer_enableGrade); // Added (remaster)
+        jkPlayer_gradeStrength = stdJSON_GetFloat(ext_fpath, "gradestrength", jkPlayer_gradeStrength);
+        jkPlayer_gradeToneCurve = stdJSON_GetBool(ext_fpath, "gradetonecurve", jkPlayer_gradeToneCurve);
+        jkPlayer_gradeExposure = stdJSON_GetFloat(ext_fpath, "gradeexposure", jkPlayer_gradeExposure);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

@@ -146,6 +146,12 @@ extern int jkPlayer_enableBloom;
 extern int jkPlayer_fpslimit;
 extern int jkPlayer_enableVsync;
 extern flex_t jkPlayer_ssaaMultiple;
+// Added (remaster): colour grading pass (exposure, highlight roll-off, .cube LUT)
+extern int jkPlayer_enableGrade;
+extern char jkPlayer_gradeLut[256];
+extern flex_t jkPlayer_gradeStrength;
+extern int jkPlayer_gradeToneCurve;
+extern flex_t jkPlayer_gradeExposure;
 extern int jkPlayer_enableSSAO;
 extern flex_t jkPlayer_gamma;
 extern flex_t jkPlayer_hudScale;

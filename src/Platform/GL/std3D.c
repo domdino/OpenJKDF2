@@ -93,6 +93,8 @@ typedef struct std3DFramebuffer
     std3DIntermediateFbo ssaoBlur2;
     //std3DIntermediateFbo ssaoBlur3;
 
+    std3DIntermediateFbo grade; // Added (remaster): half-float scene composite for the grading pass
+
     GLuint rbo;
     int32_t w;
     int32_t h;
@@ -132,6 +134,15 @@ std3DSimpleTexStage std3D_texFboStage;
 std3DSimpleTexStage std3D_blurStage;
 std3DSimpleTexStage std3D_ssaoStage;
 std3DSimpleTexStage std3D_ssaoMixStage;
+
+// Added (remaster): colour grading pass and its 3D LUT
+std3DSimpleTexStage std3D_gradeStage;
+static GLint std3D_gradeUniformLut = -1, std3D_gradeUniformLutSize = -1;
+static GLint std3D_gradeUniformDomainMin = -1, std3D_gradeUniformDomainMax = -1;
+static GLuint std3D_gradeLutTex = 0;
+static int std3D_gradeLutSize = 0;
+static float std3D_gradeLutDomainMin[3] = {0.0f, 0.0f, 0.0f};
+static float std3D_gradeLutDomainMax[3] = {1.0f, 1.0f, 1.0f};
 
 GLuint blank_tex, blank_tex_white;
 void* blank_data = NULL, *blank_data_white = NULL;
@@ -350,6 +361,13 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
         pFb->blur4.ih = height;*/
     }
 
+    // Added (remaster): half-float target so bloom above 1.0 survives until the grade pass.
+    if (jkPlayer_enableGrade)
+    {
+        pFb->enable_extra |= 4;
+        std3D_generateIntermediateFbo(Window_xSize, Window_ySize, &pFb->grade, 1);
+    }
+
     pFb->main.fbo = pFb->fbo;
     pFb->main.tex = pFb->tex1;
     pFb->main.rbo = pFb->rbo;
@@ -383,6 +401,8 @@ void std3D_deleteFramebuffer(std3DFramebuffer* pFb)
     std3D_deleteIntermediateFbo(&pFb->ssaoBlur1);
     std3D_deleteIntermediateFbo(&pFb->ssaoBlur2);
     //std3D_deleteIntermediateFbo(&pFb->ssaoBlur3);
+
+    std3D_deleteIntermediateFbo(&pFb->grade); // Added (remaster)
 }
 
 void std3D_swapFramebuffers()
@@ -499,6 +519,12 @@ int init_resources()
     if (!std3D_loadSimpleTexProgram("shaders/blur", &std3D_blurStage)) return false;
     if (!std3D_loadSimpleTexProgram("shaders/ssao", &std3D_ssaoStage)) return false;
     if (!std3D_loadSimpleTexProgram("shaders/ssao_mix", &std3D_ssaoMixStage)) return false;
+    // Added (remaster): colour grading pass
+    if (!std3D_loadSimpleTexProgram("shaders/grade", &std3D_gradeStage)) return false;
+    std3D_gradeUniformLut = std3D_tryFindUniform(std3D_gradeStage.program, "lut");
+    std3D_gradeUniformLutSize = std3D_tryFindUniform(std3D_gradeStage.program, "lutSize");
+    std3D_gradeUniformDomainMin = std3D_tryFindUniform(std3D_gradeStage.program, "lutDomainMin");
+    std3D_gradeUniformDomainMax = std3D_tryFindUniform(std3D_gradeStage.program, "lutDomainMax");
 
     // Attributes/uniforms
     attribute_coord3d = std3D_tryFindAttribute(programDefault, "coord3d");
@@ -673,6 +699,39 @@ int init_resources()
     return true;
 }
 
+// Added (remaster): mipmaps and anisotropic filtering for true-colour textures (16-bit
+// MATs and HD jkgm materials). Call with the texture bound. bGenMips builds the mip
+// chain after the level 0 upload, so filtering can be toggled later without re-uploading.
+// Filtering off keeps the original crisp nearest-neighbour look.
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#endif
+#ifndef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
+#endif
+void std3D_SetTrueColorFiltering(int bFilter, int bGenMips)
+{
+    static float maxAniso = -1.0f;
+    if (maxAniso < 0.0f) {
+        GLfloat v = 1.0f;
+        while (glGetError() != GL_NO_ERROR) {}
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &v);
+        maxAniso = (glGetError() == GL_NO_ERROR && v > 1.0f) ? (v > 16.0f ? 16.0f : v) : 1.0f;
+        stdPlatform_Printf("std3D: anisotropic filtering max %.0fx\n", maxAniso);
+    }
+
+    if (bGenMips) {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 1000);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, bFilter ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, bFilter ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST);
+    if (maxAniso > 1.0f)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, bFilter ? maxAniso : 1.0f);
+}
+
 int std3D_Startup()
 {
     if (std3D_bInitted) {
@@ -710,6 +769,11 @@ void std3D_FreeResources()
 
     glDeleteProgram(programDefault);
     glDeleteProgram(programMenu);
+    // Added (remaster): grading pass. The LUT is reloaded on next use.
+    glDeleteProgram(std3D_gradeStage.program);
+    if (std3D_gradeLutTex) glDeleteTextures(1, &std3D_gradeLutTex);
+    std3D_gradeLutTex = 0;
+    std3D_gradeLutSize = 0;
     std3D_deleteFramebuffer(&std3D_framebuffers[0]);
     std3D_deleteFramebuffer(&std3D_framebuffers[1]);
     glDeleteTextures(1, &blank_tex);
@@ -788,7 +852,9 @@ int std3D_StartScene()
 
     if (tex_w != std3D_pFb->w || tex_h != std3D_pFb->h 
         || (!(std3D_pFb->enable_extra & 1) && jkPlayer_enableBloom)
-        || (!(std3D_pFb->enable_extra & 2) && jkPlayer_enableSSAO))
+        || (!(std3D_pFb->enable_extra & 2) && jkPlayer_enableSSAO)
+        || (!!(std3D_pFb->enable_extra & 4) != !!jkPlayer_enableGrade) // Added (remaster)
+        || (jkPlayer_enableGrade && (std3D_pFb->grade.w != Window_xSize || std3D_pFb->grade.h != Window_ySize)))
     {
         std3D_deleteFramebuffer(std3D_pFb);
         std3D_generateFramebuffer(tex_w, tex_h, std3D_pFb);
@@ -2371,6 +2437,141 @@ void std3D_DrawSimpleTex(std3DSimpleTexStage* pStage, std3DIntermediateFbo* pFbo
     //glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+// Added (remaster): .cube LUT loader for the grading pass. Re-checks the file twice a
+// second and reloads when it changes, so a LUT re-exported from Resolve shows up live.
+// Path is r_gradeLut, relative to the game data folder.
+#include <sys/stat.h>
+#include <ctype.h>
+static char std3D_gradeLutPath[SITHCVAR_MAX_STRLEN];
+static long long std3D_gradeLutStamp = 0;
+static uint32_t std3D_gradeLutLastCheckMs = 0;
+static int std3D_gradeLutChecked = 0;
+
+static long long std3D_GradeFileStamp(const struct stat* pSt)
+{
+#ifdef __APPLE__
+    return (long long)pSt->st_mtimespec.tv_sec * 1000000000LL + pSt->st_mtimespec.tv_nsec + (long long)pSt->st_size * 7;
+#else
+    return (long long)pSt->st_mtime * 1000000000LL + (long long)pSt->st_size * 7;
+#endif
+}
+
+static int std3D_GradeParseCube(const char* pPath, float** ppData, int* pSize, float* pMin, float* pMax)
+{
+    FILE* f = fopen(pPath, "r");
+    if (!f) return 0;
+
+    char line[512];
+    int size = 0, count = 0, total = 0;
+    float* data = NULL;
+    pMin[0] = pMin[1] = pMin[2] = 0.0f;
+    pMax[0] = pMax[1] = pMax[2] = 1.0f;
+
+    while (fgets(line, sizeof(line), f))
+    {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\0' || *p == '\n' || *p == '\r') continue;
+
+        if (!strncmp(p, "LUT_1D_SIZE", 11)) {
+            stdPlatform_Printf("std3D: grade LUT `%s` is 1D, only 3D .cube LUTs are supported\n", pPath);
+            goto fail;
+        }
+        if (!strncmp(p, "LUT_3D_SIZE", 11)) {
+            size = atoi(p + 11);
+            if (size < 2 || size > 256 || data) goto fail;
+            total = size * size * size;
+            data = (float*)malloc(sizeof(float) * 3 * total);
+            if (!data) goto fail;
+            continue;
+        }
+        if (!strncmp(p, "DOMAIN_MIN", 10)) { sscanf(p + 10, "%f %f %f", &pMin[0], &pMin[1], &pMin[2]); continue; }
+        if (!strncmp(p, "DOMAIN_MAX", 10)) { sscanf(p + 10, "%f %f %f", &pMax[0], &pMax[1], &pMax[2]); continue; }
+        if (!strncmp(p, "LUT_3D_INPUT_RANGE", 18)) {
+            float lo = 0.0f, hi = 1.0f;
+            if (sscanf(p + 18, "%f %f", &lo, &hi) == 2) {
+                pMin[0] = pMin[1] = pMin[2] = lo;
+                pMax[0] = pMax[1] = pMax[2] = hi;
+            }
+            continue;
+        }
+        if (isalpha((unsigned char)*p)) continue; // TITLE and other keywords
+
+        float r, g, b;
+        if (sscanf(p, "%f %f %f", &r, &g, &b) == 3) {
+            if (!data || count >= total) goto fail;
+            data[count * 3 + 0] = r;
+            data[count * 3 + 1] = g;
+            data[count * 3 + 2] = b;
+            count++;
+        }
+    }
+    fclose(f);
+    if (!data || count != total) {
+        free(data);
+        stdPlatform_Printf("std3D: grade LUT `%s` has %d entries, expected %d\n", pPath, count, total);
+        return 0;
+    }
+    *ppData = data;
+    *pSize = size;
+    return 1;
+
+fail:
+    fclose(f);
+    free(data);
+    stdPlatform_Printf("std3D: could not read grade LUT `%s`\n", pPath);
+    return 0;
+}
+
+static void std3D_GradeUpdateLut(void)
+{
+    uint32_t nowMs = stdPlatform_GetTimeMsec();
+    int bPathChanged = strcmp(std3D_gradeLutPath, jkPlayer_gradeLut) != 0;
+    if (!bPathChanged && std3D_gradeLutChecked && (nowMs - std3D_gradeLutLastCheckMs) < 500 && (std3D_gradeLutTex || std3D_gradeLutStamp == -1))
+        return;
+    std3D_gradeLutLastCheckMs = nowMs;
+    std3D_gradeLutChecked = 1;
+    stdString_SafeStrCopy(std3D_gradeLutPath, jkPlayer_gradeLut, sizeof(std3D_gradeLutPath));
+
+    struct stat st;
+    if (!std3D_gradeLutPath[0] || stat(std3D_gradeLutPath, &st) != 0) {
+        if (bPathChanged || std3D_gradeLutStamp != -1)
+            stdPlatform_Printf("std3D: grade LUT `%s` not found, grading without a LUT\n", std3D_gradeLutPath);
+        std3D_gradeLutStamp = -1;
+        std3D_gradeLutSize = 0;
+        return;
+    }
+
+    long long stamp = std3D_GradeFileStamp(&st);
+    if (!bPathChanged && std3D_gradeLutTex && stamp == std3D_gradeLutStamp)
+        return;
+    std3D_gradeLutStamp = stamp;
+
+    float* data = NULL;
+    int size = 0;
+    if (!std3D_GradeParseCube(std3D_gradeLutPath, &data, &size, std3D_gradeLutDomainMin, std3D_gradeLutDomainMax)) {
+        std3D_gradeLutSize = 0;
+        return;
+    }
+
+    if (!std3D_gradeLutTex) glGenTextures(1, &std3D_gradeLutTex);
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_3D, std3D_gradeLutTex);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGB16F, size, size, size, 0, GL_RGB, GL_FLOAT, data);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    glActiveTexture(GL_TEXTURE0);
+    free(data);
+
+    std3D_gradeLutSize = size;
+    stdPlatform_Printf("std3D: loaded grade LUT `%s` (%dx%dx%d)\n", std3D_gradeLutPath, size, size, size);
+}
+
 void std3D_DrawSceneFbo()
 {
     //printf("Draw scene FBO\n");
@@ -2399,6 +2600,17 @@ void std3D_DrawSceneFbo()
     if (!jkGame_isDDraw && !jkGuiBuildMulti_bRendering)
     {
         return;
+    }
+
+    // Added (remaster): with grading on, the scene composites into a half-float buffer
+    // first, then one pass grades it onto the window. The HUD is drawn later, ungraded.
+    int draw_grade = jkPlayer_enableGrade && (std3D_pFb->enable_extra & 4) && std3D_gradeStage.program;
+    std3DIntermediateFbo* pOut = draw_grade ? &std3D_pFb->grade : &std3D_pFb->window;
+    if (draw_grade)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, std3D_pFb->grade.fbo);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
     }
 
     if (jkGuiBuildMulti_bRendering) {
@@ -2434,8 +2646,8 @@ void std3D_DrawSceneFbo()
     if (!draw_ssao)
     {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->tex0, 0, 0, 1.0, 1.0, jkPlayer_gamma, 0);
-        //std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->tex1, 0, 0, 0.0, 1.0, jkPlayer_gamma, 0); // test emission output
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->tex0, 0, 0, 1.0, 1.0, jkPlayer_gamma, 0);
+        //std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->tex1, 0, 0, 0.0, 1.0, jkPlayer_gamma, 0); // test emission output
     }
     else
     {
@@ -2446,12 +2658,12 @@ void std3D_DrawSceneFbo()
         //std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->ssaoBlur3, std3D_pFb->ssaoBlur2.tex, 0, 0, 8.0, 3.0, 4.0);
 
         glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
-        std3D_DrawSimpleTex(&std3D_ssaoMixStage, &std3D_pFb->window, std3D_pFb->ssaoBlur2.tex, std3D_pFb->tex0, 0, 0.0, 0.0, jkPlayer_gamma, 0);
+        std3D_DrawSimpleTex(&std3D_ssaoMixStage, pOut, std3D_pFb->ssaoBlur2.tex, std3D_pFb->tex0, 0, 0.0, 0.0, jkPlayer_gamma, 0);
     }
 
     glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
     if (!draw_bloom)
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->tex1, 0, 0, 1.0, 1.0, jkPlayer_gamma, 0);
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->tex1, 0, 0, 1.0, 1.0, jkPlayer_gamma, 0);
 
     if (draw_bloom)
     {
@@ -2473,13 +2685,37 @@ void std3D_DrawSceneFbo()
         */
 
         glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
-        //std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->blurBlend.tex, 0, 0, 1.0, 1.0, 1.0, 0);
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->tex1, 0, 0, 1.0, 1.5, jkPlayer_gamma, 0);
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->blur1.tex, 0, 0, 1.0, bloom_intensity * 1.5, jkPlayer_gamma, 0);
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->blur2.tex, 0, 0, 1.0, bloom_intensity * 1.0, jkPlayer_gamma, 0);
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->blur3.tex, 0, 0, 1.0, bloom_intensity * 1.0, jkPlayer_gamma, 0);
-        std3D_DrawSimpleTex(&std3D_texFboStage, &std3D_pFb->window, std3D_pFb->blur4.tex, 0, 0, 1.0, bloom_intensity * 0.8, jkPlayer_gamma, 0);
+        //std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blurBlend.tex, 0, 0, 1.0, 1.0, 1.0, 0);
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->tex1, 0, 0, 1.0, 1.5, jkPlayer_gamma, 0);
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur1.tex, 0, 0, 1.0, bloom_intensity * 1.5, jkPlayer_gamma, 0);
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur2.tex, 0, 0, 1.0, bloom_intensity * 1.0, jkPlayer_gamma, 0);
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur3.tex, 0, 0, 1.0, bloom_intensity * 1.0, jkPlayer_gamma, 0);
+        std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur4.tex, 0, 0, 1.0, bloom_intensity * 0.8, jkPlayer_gamma, 0);
     }
+    // Added (remaster): grade the composited scene onto the window.
+    if (draw_grade)
+    {
+        std3D_GradeUpdateLut();
+        glUseProgram(std3D_gradeStage.program);
+        glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_3D, std3D_gradeLutSize ? std3D_gradeLutTex : 0);
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(std3D_gradeUniformLut, 3);
+        glUniform1f(std3D_gradeUniformLutSize, (float)std3D_gradeLutSize);
+        glUniform3fv(std3D_gradeUniformDomainMin, 1, std3D_gradeLutDomainMin);
+        glUniform3fv(std3D_gradeUniformDomainMax, 1, std3D_gradeLutDomainMax);
+
+        glDisable(GL_BLEND);
+        std3D_DrawSimpleTex(&std3D_gradeStage, &std3D_pFb->window, std3D_pFb->grade.tex, 0, 0,
+                            jkPlayer_gradeExposure, jkPlayer_gradeToneCurve ? 1.0 : 0.0,
+                            std3D_gradeLutSize ? jkPlayer_gradeStrength : 0.0, 0);
+        glEnable(GL_BLEND);
+
+        glActiveTexture(GL_TEXTURE0 + 3);
+        glBindTexture(GL_TEXTURE_3D, 0);
+        glActiveTexture(GL_TEXTURE0);
+    }
+
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
@@ -3099,6 +3335,7 @@ int std3D_AddToTextureCache(tVBuffer *vbuf, rdDDrawSurface *texture, int is_alph
         else
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,  GL_RGBA, GL_UNSIGNED_SHORT_1_5_5_5_REV, image_8bpp);
 #endif
+        std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 1); // Added (remaster)
 
 #ifdef __NOTDEF_FORMAT_CONVERSION
         void* image_data = malloc(width*height*4);
@@ -3557,10 +3794,11 @@ void std3D_UpdateSettings()
         if (!std3D_aLoadedTextures[i]) continue;
         glBindTexture(GL_TEXTURE_2D, std3D_aLoadedTextures[i]);
 
-        if (jkPlayer_enableTextureFilter && tex->is_16bit)
+        // Added (remaster): true-colour textures get mips + anisotropic via the shared helper.
+        // 8-bit paletted textures stay nearest here; their filtering happens in the shader.
+        if (tex->is_16bit)
         {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 0);
         }
         else
         {
@@ -3570,32 +3808,12 @@ void std3D_UpdateSettings()
 
         if (tex->emissive_texture_id != 0) {
             glBindTexture(GL_TEXTURE_2D, tex->emissive_texture_id);
-            
-            if (jkPlayer_enableTextureFilter)
-            {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            }
-            else
-            {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            }
+            std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 0);
         }
 
         if (tex->displacement_texture_id != 0) {
             glBindTexture(GL_TEXTURE_2D, tex->displacement_texture_id);
-            
-            if (jkPlayer_enableTextureFilter)
-            {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            }
-            else
-            {
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            }
+            std3D_SetTrueColorFiltering(jkPlayer_enableTextureFilter, 0);
         }
     }
 

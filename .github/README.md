@@ -80,7 +80,9 @@ That breaks down into concrete engine work:
 - [x] Engine limits mapped: 512 vertices and 512 faces per body part, 64 joints
 - [x] Raise the per-part limits for detailed models (8192 vertices per mesh)
 - [x] Skinning: one continuous mesh bends with the original skeleton, so every original animation drives modern characters (tested pixel-identical)
-- [ ] Fit Jedi Academy's Kyle and stormtrooper (skinned, about 2,900 triangles) onto JK's skeleton
+- [x] Fit Jedi Academy's Kyle onto JK's skeleton (tools/blender/ja_to_jk.py): in game, driven by the original animations
+- [ ] Stormtrooper and the rest of the cast from Jedi Academy
+- [ ] Material pass on the converted characters (Texture God)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper
 - [ ] New lightsaber
@@ -93,6 +95,10 @@ That breaks down into concrete engine work:
 - [ ] Playtest every cutscene in game
 
 ## Latest
+
+Stage 4: the engine now supports skinned characters, and Jedi Academy's Kyle runs in Jedi Knight on the original skeleton and animations (left original, right Academy Kyle; bottom: mid-run, same animation).
+
+![Jedi Academy Kyle in Jedi Knight](../docs/screenshots/stage4-academy-kyle.png)
 
 Stage 5 has started. Every cutscene is extracted for upscaling, and the engine now plays HD replacement videos (H.264, HEVC or ProRes, any resolution or frame rate) in place of the 640x300 originals, decoded on the Mac's media engine. The original keeps running underneath for timing, sound and subtitles. Left: original. Right: a black-and-white 1080p test file proving the swap.
 

@@ -5,6 +5,8 @@
 #include "World/sithWorld.h"
 #include "Main/sithCommand.h"
 #include "Engine/sithCamera.h"
+#include "Engine/sithKeyFrame.h"
+#include "Engine/sithPuppet.h"
 #include "Main/sithCvar.h"
 #include "Primitives/rdMatrix.h"
 #include "Primitives/rdVector.h"
@@ -1536,6 +1538,14 @@ static void Window_DevCaptureTick(void)
             // OPENJKDF2_CAPTURE_CAMERA=N: cycle the camera N times (1 = third person, to see Kyle).
             const char* pCam = getenv("OPENJKDF2_CAPTURE_CAMERA");
             for (int c = pCam ? atoi(pCam) : 0; c > 0; c--) sithCamera_CycleCamera();
+            // OPENJKDF2_CAPTURE_KEY=kyrun0.key: play that animation on the player as timing starts
+            // (shoot it mid-move with a short CAPTURE_FRAMES), e.g. to check skinned models bend right.
+            const char* pKey = getenv("OPENJKDF2_CAPTURE_KEY");
+            if (pKey && pKey[0] && pPlayer && pPlayer->renderData.puppet) {
+                rdKeyframe* pKf = sithKeyFrame_LoadEntry(pKey);
+                int track = pKf ? sithPuppet_PlayKey(pPlayer->renderData.puppet, pKf, 4, 6, 0, 0) : -1;
+                printf("CAPTURE: key %s %s (track %d)\n", pKey, pKf ? "playing" : "not found", track);
+            }
             tLast = now;
             frameIdx = 0;
             state = 2;

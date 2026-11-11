@@ -29,8 +29,9 @@ list(JOIN EMBEDDED_RESOURCES "+" EMBEDDED_RESOURCES_SEPARATED)
 # All of our pre-build steps
 add_custom_command(
     OUTPUT ${GLOBALS_C}
-    COMMAND ${PYTHON_EXE} -m cogapp -d -D symbols_fpath="${SYMBOLS_FILE}" -D project_root="${PROJECT_SOURCE_DIR}" -D embedded_resources="${EMBEDDED_RESOURCES_SEPARATED}" -o ${GLOBALS_C} ${GLOBALS_C_COG}
+    COMMAND ${PYTHON_EXE} -m cogapp -d -D symbols_fpath=${SYMBOLS_FILE} -D project_root=${PROJECT_SOURCE_DIR} -D embedded_resources=${EMBEDDED_RESOURCES_SEPARATED} -o ${GLOBALS_C} ${GLOBALS_C_COG}
     DEPENDS ${SYMBOLS_FILE} ${GLOBALS_C_COG} ${GLOBALS_H} ${EMBEDDED_RESOURCES} ${PYTHON_EXE} ${COGAPP_DEPENDS}
+    VERBATIM
 )
 
 if(NOT PLAT_MSVC)
@@ -48,8 +49,9 @@ endif()
 
 add_custom_command(
     OUTPUT ${GLOBALS_H}
-    COMMAND ${PYTHON_EXE} -m cogapp -d -D symbols_fpath="${SYMBOLS_FILE}" -D project_root="${PROJECT_SOURCE_DIR}" -D embedded_resources="${EMBEDDED_RESOURCES_SEPARATED}" -o ${GLOBALS_H} ${GLOBALS_H_COG}
+    COMMAND ${PYTHON_EXE} -m cogapp -d -D symbols_fpath=${SYMBOLS_FILE} -D project_root=${PROJECT_SOURCE_DIR} -D embedded_resources=${EMBEDDED_RESOURCES_SEPARATED} -o ${GLOBALS_H} ${GLOBALS_H_COG}
     DEPENDS ${SYMBOLS_FILE} ${GLOBALS_H_COG} ${PYTHON_EXE} ${COGAPP_DEPENDS} ${EMBEDDED_RESOURCES}
+    VERBATIM
 )
 
 # Gather the cog generation into one target. Many sith_engine translation units

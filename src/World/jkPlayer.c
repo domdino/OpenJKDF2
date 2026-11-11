@@ -204,7 +204,7 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("g_canonicalCogTickrate",     CANONICAL_COG_TICKRATE,     &jkPlayer_canonicalCogTickrate,     CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("g_canonicalPhysTickrate",    CANONICAL_PHYS_TICKRATE,    &jkPlayer_canonicalPhysTickrate,    CVARFLAG_LOCAL);
 
-    sithCvar_RegisterBool("r_hidpi",                     0,                         &Window_isHiDpi_tmp,                CVARFLAG_LOCAL|CVARFLAG_READONLY);
+    sithCvar_RegisterBool("r_hidpi",                     WINDOW_DEFAULT_HIDPI,                         &Window_isHiDpi_tmp,                CVARFLAG_LOCAL|CVARFLAG_READONLY);
     sithCvar_RegisterBool("r_fullscreen",                0,                         &Window_isFullscreen_tmp,           CVARFLAG_LOCAL|CVARFLAG_READONLY);
 #ifdef RDRASTER_SOFTWARE_RENDERER
     sithCvar_RegisterBool("r_softwareRenderer",          0,                         &rdroid_bSoftwareRenderer,          CVARFLAG_LOCAL);
@@ -225,7 +225,7 @@ void jkPlayer_StartupVars()
 void jkPlayer_ResetVars()
 {
 #ifdef QOL_IMPROVEMENTS
-    Window_isHiDpi_tmp = 0;
+    Window_isHiDpi_tmp = WINDOW_DEFAULT_HIDPI; // Added (remaster): was 0
     Window_isFullscreen_tmp = 0;
     jkPlayer_fov = 90;
     jkPlayer_fovIsVertical = 1;

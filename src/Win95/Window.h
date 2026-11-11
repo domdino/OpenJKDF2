@@ -39,6 +39,13 @@ int Window_DefaultHandler(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, voi
 
 extern int Window_isHiDpi;
 extern int Window_isFullscreen;
+// Added (remaster): Retina by default on macOS for new installs and new players.
+#ifdef MACOS
+#define WINDOW_DEFAULT_HIDPI (1)
+#else
+#define WINDOW_DEFAULT_HIDPI (0)
+#endif
+
 void Window_SetHiDpi(int val);
 void Window_SetFullscreen(int val);
 

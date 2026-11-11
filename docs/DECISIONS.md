@@ -273,3 +273,17 @@ Result: docs/screenshots/stage2-remaster-preset-off-on.png (top original, bottom
 - `scripts/build_hd_pack.sh` now takes several installers and runs rebuild then signatures.
 
 **Original CD-ROM (Dom's boxed copy).** Two disc rips (data + CD audio tracks, cue sheets) and box/manual scans. Disc 1's data track (MODE1/2352) converts to ISO by keeping bytes 16..2064 of each sector. Res2.gob and Res1hi.gob are byte-identical to GOG's; JK1.GOB and JK.EXE differ (GOG ships the 1.01 patch). So the extracted textures are the genuine originals. The CD audio is the original soundtrack, lossless; OpenJKDF2 reads CD numbering (MUSIC/1/TrackN, MUSIC/2/TrackN), so a higher-quality soundtrack encode is possible later.
+
+## 2026-11-11 - Known issue: everything is equally shiny (Dom's note)
+
+Rock gets the same gloss as metal: `r_wetness` is one global value, because the engine has no idea what a surface is made of. Rocks aren't shiny like this even when wet. Proper fix: per-texture roughness maps. Texture God (Dom's pipeline) outputs roughness/ORM per texture, so the plan is jkgm loader + shader support for a roughness map (and later normal maps), with a sensible default (fairly rough) for textures without one. Until then, a lower global wetness is the stopgap.
+
+## 2026-11-11 - Engine fix: HD texture hashes now use the level's palette
+
+**Root cause of the low HD coverage.** OpenJKDF2 hashes each texture (for HD pack signatures) while a level loads, using `worldpal_data`. That buffer is only refreshed when a frame is drawn, and the loading bar keeps overwriting it with UI palettes, so hashes were computed with a stale palette and almost never matched. Shared textures first loaded by the menu world (static.jkl, which has no colormap) were hashed against the buffer's initial contents: all white (0xFF). Proven with a debug log (`OPENJKDF2_JKGM_DEBUG=1`: name, cel, alpha, size, hash, match type per texture) compared against `tools/jkgm_signatures.py`.
+
+**Fix** (jkgm.cpp/.h, sithWorld.c): the HD loader gets its own hash palette (`jkgm_set_hash_palette`). Before a level's text is parsed, `sithWorld_SetHashPaletteFromLevel` reads the level file, finds the first `world colormaps` entry (the georesource section comes after materials, so it has to be found up front), loads that colormap and hands it over. Levels without one (the menu world) use dflt.cmp. Falls back to the old behaviour if nothing is set.
+
+**Result.** Sarris view: my tool reproduces the engine hash for 292/292 textures (was 103), and 61 textures load HD replacements (was 0). Boc's room: 84 HD textures. Hangar and Sarris still show no wrong textures. docs/screenshots/stage3-hd-hashfix-off-on.png (the Boc pair isn't comparable: the boss script advanced to a different framing with HD on).
+
+**Performance problem found.** Boc's room with HD textures plus the full remaster look: ~33-40 fps at 1280x960 (vs 112 with HD but no remaster, ~120 with remaster but no HD). Bisect, one effect off at a time: bloom off 61, per-pixel lighting off 53, haze off 47, reflections off 46, SSAO off 42, shafts off 40. Cumulative, not one culprit: heavier main pass with HD (more texture bandwidth, 16x anisotropic) plus every full-screen pass. Next: half-res bloom first level and reflections, lower anisotropy, GPU profile in Xcode, then re-measure at full-screen Retina (about 5x these pixels).

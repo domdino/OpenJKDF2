@@ -66,6 +66,24 @@ extern "C" {
 #include <png.h>
 
 extern void* worldpal_data;
+
+// Added (remaster): textures are hashed while a level loads, before its first frame, and
+// worldpal_data is only refreshed when a frame is drawn (the loading bar keeps overwriting
+// it with UI palettes). So hashes came out with a stale palette and almost never matched
+// pack signatures. The level loader sets the level's real palette here first.
+static uint8_t jkgm_aHashPalette[0x300];
+static int jkgm_bHashPaletteValid = 0;
+
+void jkgm_set_hash_palette(const uint8_t* pPal768)
+{
+    if (pPal768) {
+        memcpy(jkgm_aHashPalette, pPal768, sizeof(jkgm_aHashPalette));
+        jkgm_bHashPaletteValid = 1;
+    }
+    else {
+        jkgm_bHashPaletteValid = 0;
+    }
+}
 extern rdDDrawSurface* std3D_aLoadedSurfaces[1024];
 extern GLuint std3D_aLoadedTextures[1024];
 extern size_t std3D_loadedTexturesAmt;
@@ -532,9 +550,10 @@ std::string jkgm_get_tex_hash(tVBuffer *vbuf, rdDDrawSurface *texture, rdMateria
         for (int i = 0; i < width*height; i++)
         {
             uint8_t val = image_8bpp[i];
-            uint8_t b = ((uint8_t*)worldpal_data)[val*3];
-            uint8_t g = ((uint8_t*)worldpal_data)[(val*3)+1];
-            uint8_t r = ((uint8_t*)worldpal_data)[(val*3)+2];
+            const uint8_t* pHashPal = jkgm_bHashPaletteValid ? jkgm_aHashPalette : (const uint8_t*)worldpal_data; // Added (remaster)
+            uint8_t b = pHashPal[val*3];
+            uint8_t g = pHashPal[(val*3)+1];
+            uint8_t r = pHashPal[(val*3)+2];
 
             if (is_alpha_tex) {
                 uint16_t rgb565 = (((b >> 3) & 0x1F)<<0) | (((g >> 2) & 0x3F)<<5) | (((r >> 3) & 0x1F) << (6+5));
@@ -593,6 +612,19 @@ void jkgm_populate_shortcuts(tVBuffer *vbuf, rdDDrawSurface *texture, rdMaterial
     }
     else {
         texture->skip_jkgm = 1;
+    }
+
+    // Added (remaster): OPENJKDF2_JKGM_DEBUG=1 logs every mip 0 texture's hash and how it
+    // matched, to check HD pack signatures against what the engine actually computes.
+    {
+        static int dbg = -1;
+        if (dbg < 0) { const char* e = getenv("OPENJKDF2_JKGM_DEBUG"); dbg = (e && e[0] == '1'); }
+        if (dbg && mipmap_level == 0) {
+            const char* how = jkgm_cache.find(cache_key) != jkgm_cache.end() ? "name"
+                            : jkgm_cache_hash.find(hash) != jkgm_cache_hash.end() ? "hash" : "none";
+            stdPlatform_Printf("jkgm: %s cel %d alpha %d %dx%d hash %s match %s\n", material->mat_full_fpath, cel,
+                               is_alpha_tex, vbuf->format.width, vbuf->format.height, hash.c_str(), how);
+        }
     }
 
     // Also preload non-PNG textures

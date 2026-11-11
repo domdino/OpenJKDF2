@@ -64,7 +64,10 @@ That breaks down into concrete engine work:
 - [x] Research: OpenJKDF2 already loads HD texture packs (colour, glow, displacement maps)
 - [x] Tool to extract every original texture to PNG (`tools/mat_extract.py`)
 - [x] Rebuild the community Neural Upscale pack from its installer (555 textures matched so far)
-- [ ] Find or recreate the rest of that pack
+- [x] Rebuild from all three Remastered installers, palette-correct (no wrong colours in other levels)
+- [x] Engine fix: HD texture hashes use the level's real palette (coverage went from almost none to dozens per view)
+- [ ] Performance: HD textures plus the full remaster look are too slow in some rooms (optimise passes)
+- [ ] Per-texture roughness so rock isn't as shiny as metal
 - [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
 - [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
 

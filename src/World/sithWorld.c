@@ -17,6 +17,10 @@
 #include "Devices/sithConsole.h"
 #include "General/stdFnames.h"
 #include "Engine/rdColormap.h"
+#ifdef SDL2_RENDER
+#include "Platform/GL/jkgm.h"
+#endif
+#include <ctype.h>
 #include "World/sithThing.h"
 #include "World/sithSector.h"
 #include "World/jkPlayer.h"
@@ -129,6 +133,65 @@ void sithWorld_UpdateLoadProgress(flex_t progress)
         sithWorld_LoadPercentCallback(progress);
 }
 
+#if defined(SDL2_RENDER) && defined(TARGET_CAN_JKGM)
+// Added (remaster): before a level's text is parsed, find its first colormap ("world
+// colormaps" in the georesource section, which comes after materials in the file) and give
+// its palette to the HD texture loader, so material hashes use the level's real palette.
+static void sithWorld_SetHashPaletteFromLevel(const char* pJklPath)
+{
+    jkgm_set_hash_palette(NULL);
+    stdFile_t f = rdroid_g_pHS->fileOpen(pJklPath, "rb");
+    char name[64] = {0};
+    if (!f) goto load_cmp;
+
+    size_t cap = 1 << 20, len = 0;
+    char* buf = (char*)malloc(cap + 1);
+    while (buf) {
+        if (len == cap) {
+            if (cap >= (32u << 20)) break; // levels are a few MB at most
+            char* nb = (char*)realloc(buf, cap * 2 + 1);
+            if (!nb) break;
+            buf = nb; cap *= 2;
+        }
+        size_t got = rdroid_g_pHS->fileRead(f, buf + len, cap - len);
+        if (got == 0) break;
+        len += got;
+    }
+    rdroid_g_pHS->fileClose(f);
+    if (!buf) goto load_cmp;
+    buf[len] = 0;
+    for (size_t i = 0; i < len; i++) buf[i] = (char)tolower((unsigned char)buf[i]);
+
+    char* p = strstr(buf, "world colormaps");
+    if (p) {
+        // Next line of the form "0: name.cmp"
+        char* line = strchr(p, '\n');
+        while (line && *line) {
+            line++;
+            int idx;
+            if (sscanf(line, " %d: %63s", &idx, name) == 2) break;
+            name[0] = 0;
+            line = strchr(line, '\n');
+        }
+    }
+    free(buf);
+    // The menu world (static.jkl) has no colormap, but it loads the textures every level
+    // shares (weapons, hands, common surfaces). Hash those with the default palette rather
+    // than whatever happens to be in the renderer's buffer (initially all white).
+load_cmp:
+    if (!name[0]) stdString_SafeStrCopy(name, "dflt.cmp", sizeof(name));
+
+    char cmpPath[128];
+    stdString_snprintf(cmpPath, sizeof(cmpPath), "%s%c%s", "misc\\cmp", '\\', name);
+    rdColormap tmp;
+    memset(&tmp, 0, sizeof(tmp));
+    if (rdColormap_LoadEntry(cmpPath, &tmp)) {
+        jkgm_set_hash_palette((const uint8_t*)tmp.colors);
+        rdColormap_FreeEntry(&tmp);
+    }
+}
+#endif
+
 int sithWorld_Load(SithWorld *pWorld, char *pFilename)
 {
     int result; // eax
@@ -167,6 +230,9 @@ int sithWorld_Load(SithWorld *pWorld, char *pFilename)
             stdFnames_MakePath(v8, 128, "mission", pFilename);
         }
         sithWorld_some_integer_4 = 0;
+#if defined(SDL2_RENDER) && defined(TARGET_CAN_JKGM)
+        sithWorld_SetHashPaletteFromLevel(v8); // Added (remaster)
+#endif
         if ( !stdConffile_Open(v8) )
         {
             goto failed_open;

@@ -23,7 +23,9 @@ Short running log of what was tried, what worked, what didn't and why. Read this
 
 **First run**
 - `scripts/run.sh -- -autostart -sp -episode JK1 -map 01narshadda.jkl` launches straight into level 1. Confirmed the level loads (engine wrote its level-start autosave `_JKAUTO_01narshadda.jks`).
-- Not yet checked by hand: menu save/load, lightsaber, Force powers, music, cutscenes. Needs a play session.
+- Hand playtest by Dom (player "Dom", HiDPI on, windowed): cutscenes play in sync, music plays, menu save and load work, Force powers work (via cheat). Looks like the original. Baseline screenshot: docs/screenshots/stage1-baseline-01narshadda.webp.
+- Lightsaber not tested yet: Kyle doesn't get it until a later level and no cheat gives it early. Check when we reach it.
+- Stage 1 done 2026-11-11.
 
 **Settings worth knowing (per player, Setup > Display)**
 - `windowishidpi` is off by default. Turn on HiDPI for native Retina resolution.

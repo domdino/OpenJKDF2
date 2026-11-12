@@ -29,6 +29,7 @@ That breaks down into concrete engine work:
 | Haze and light shafts | Depth-based haze lit by the scene, screen-space light shafts | Done (playtesting) |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
+| Every shot lit like a film: side key light, rim light on every character, nothing flat | Light bake with recovered designer lights; key/rim lighting rig for characters | Planned |
 | Crisp, detailed, grimy surfaces | HD textures with roughness and normal maps | Stage 3 |
 | Detailed characters | New models through a Blender pipeline | Stage 4 |
 
@@ -57,6 +58,8 @@ That breaks down into concrete engine work:
 - [x] Screen-space reflections for wet, reflective floors (being playtested)
 - [x] Coloured light from sabers, including enemy sabers
 - [x] Haze and light shafts (being playtested)
+- [x] Volumetric cloud sky with moon shafts on the storm levels (Maw, Sarris, the ascent); other skies to follow
+- [ ] Light bake: proper level lighting from glowing surfaces and the sky ([plan](../docs/stage2-lightbake-plan.md))
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist
@@ -85,7 +88,7 @@ That breaks down into concrete engine work:
 - [x] The cast from Jedi Academy: officers, commandos, Grans, Rodians, Trandoshans, Ugnaughts (18 JK models)
 - [x] Animation check: crouch, fire, jump, punch and saber swing drive the new Kyle cleanly
 - [ ] Named characters (Jerec and the Dark Jedi, Jan) and civilians
-- [ ] Material pass on the converted characters (Texture God)
+- [ ] Material pass on the converted characters (Texture God) - Kyle done (roughness/AO/normal maps)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper
 - [x] New lightsaber: Kyle's hilt from Jedi Outcast in third person, first person and the pickups
@@ -93,6 +96,7 @@ That breaks down into concrete engine work:
 - [x] Glowing plasma blades: white-hot core, coloured sheath and halo, animated, lighting the room (`r_saberGlow`)
 - [x] Lightsaber swing trails (only on real swings)
 - [x] First-person hands: Kyle's gloves and sleeves on every weapon view
+- [x] First-person hands v2: bare hands (free PSX arms pack), rounded sleeves, Texture God jacket
 
 ### Stage 5 checklist
 

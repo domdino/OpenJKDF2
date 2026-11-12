@@ -495,3 +495,64 @@ Changes:
 - **`r_autoRenderScale` (default on)**: above ~14 megapixels the 3D scene renders scaled to that budget and is upscaled (r_ssaaMultiple already supported scales below 1). Ultrawide 52 -> 77 fps; MacBook unaffected (156). At 1:1 on the ultrawide, 75% vs native is indistinguishable: the 1997 textures are magnified far beyond pixel level there. Manual: r_ssaaMultiple 0.6 gives 96 fps.
 - Capture fix: screenshots wait longer for big windows (25-megapixel PNGs were cut off).
 - Saber trails only on real swings (sweep > 1.2 glow radii per sample): Boc's idle sway left a pale slab beside his blade.
+
+## 2026-11-11 - Texture God on Kyle, new first-person hands
+
+**Texture God on Kyle's 7 textures** (`--look remaster --tiling off --target 1024 --roughness-bias 1.35`, about 2.5 min each, all PASS). `tools/texturegod_characters.py` adds the ORM and normal maps to the character pack entries (`--albedo` also swaps in the repainted colour). In game the change is subtle: less plastic shine, a bit more cloth texture on the jacket. The repainted colour is sharper but shifts the hair and jacket tone, so maps only is the default for now (docs/screenshots/stage4-kyle-texturegod.jpg, -albedo.jpg).
+- `make_character_textures.py` now keeps ORM/normal/repainted-albedo fields when it rebuilds an entry (it used to wipe them).
+- Captures run from `gamedata/capture`, which has its own `3do/`: install the cast there too (`DATA=gamedata/capture sh scripts/install_cast.sh`), or captures show the 1997 models.
+
+**First-person hands v2** (Dom: keep the sleeves, round them, better sleeve material, use the PSX pack's hands):
+- Hands from the free "PSX First Person Arms" pack (596-vertex rig, 512px skin texture with nails and knuckles; ~/Downloads, not in git). `tools/blender/psx_fp_hands.py` curls the fingers into a fist (+X on each finger bone) and exports hand plus forearm. The second pack Dom offered (fps-hands.blend, 4k vertices) is smoother but untextured, so not used.
+- `make_fp_hands.py` grafts them onto Academy Kyle's arms: his gloved hand faces are removed, the PSX hand is fitted by wrist/fingertips/thumb (90% size), its forearm is turned onto Kyle's arm axis (the rigs bend at the wrist differently) and slimmed towards the sleeve end so it tucks in; the old gauntlet reached into the sleeve, so without a forearm the wrist showed a hole. `--ja-hands` builds the old version.
+- Skin tinted (x0.8) to match Kyle's face texture; the pack's skin read pale pink in game.
+- Sleeves rounded: `ja_fp_arms.py --subdiv 1` applies one Catmull-Clark level to the arm and cuff surfaces before posing (weights and UVs interpolate).
+- Sleeve material: the fp jacket uses the Texture God torso albedo + ORM + normal.
+- Known: a few slivers of skin cross the sleeve edge in the fist view; gun and saber idle views barely show the hands.
+- Screenshot: docs/screenshots/stage4-fp-hands-v2.jpg. Undo: `sh scripts/install_cast.sh --remove`.
+
+## 2026-11-11 - Volumetric cloud sky (storm levels first)
+
+Dom: the storm sky (13cnsky2, a 256 px tiling fractal over Maw, Sarris A/B and the ascent) needs proper clouds and light coming through them. Checked Dom's Zeus project first: its clouds and water are stylised Unity assets (Quibli, COZY, Stylized Water 3, flat cloud cards), wrong look and Unity-only, so this is written from scratch.
+
+**How it works** (`r_volumetricSky`, default on; needs per-pixel lighting)
+- `src/Engine/sithSky.c`: presets matched by the level's sky material (storm = 13cnsky2; Nar Shaddaa night = 00starry, untested so far). Lightning timing (a few flashes a minute with re-strikes). Tileable 3D noise built at first use (128^3 Perlin-Worley + Worley octaves, histogram-equalised so coverage means "fraction of sky"), 0.7 s once.
+- `sky_f.glsl`: raymarches the cloud slab (1.2-3.6 km, 56 steps, 5-step march towards the moon for self-shadowing, 2 samples upward so thick deck goes dark underneath, dual-lobe phase, powder) into a 4096x1024 panorama (azimuth x elevation). Refreshed 1/8 of the columns per frame at frame start (all of it on a new level), so the cost doesn't depend on screen size: ~0.6 ms at 1280x960.
+- Sky faces are tagged in sithRender (proc flag 0x10000000 -> tri flag 0x100000) and `default_f.glsl` skyMain samples the panorama by view direction (world axes in camera space as uniforms), over a gradient with a moon disc, stars and instant lightning glow (not through the panorama, which updates in slices).
+- Light shafts: the moon is a shaft source when in front of the camera; only sky pixels feed its rays, so walls block them.
+- Sky marker in the reflection target (z = -1000): haze only lays a light veil over it.
+
+**Bugs on the way**: the level-change check keyed on the world pointer, which a new level can reuse (fixed: name + surface count); raw noise made 55 % coverage a solid overcast (equalised); 36 km features were too big to read (now 9 km + 2.7 km billows); ambient occlusion read the sky's zero depth as "nearest surface" and blacked it out (sky now writes a far depth, facing the camera); the grimy grade crushes dark skies, so presets have an exposure.
+
+**Tuning live**: `r_skyCoverage` (0-1), `r_skySunAzimuth`, `r_skySunElevation` (degrees; defaults use the preset). Debug: `OPENJKDF2_SKY_DEBUG=1` prints the panorama range, `OPENJKDF2_SKY_DUMP=file.ppm` saves it.
+
+Result: docs/screenshots/stage2-volumetric-sky.jpg (Sarris rooftop), stage2-volumetric-sky-panorama.png (the whole sky). Known: faint stripes just below the horizon line; moon breaks can still clip bright; Maw/ascent start views show no sky, so they're unchecked; other skies (Sulon, Baron's Hed, fuel station, tower) still use their textures until they get presets.
+
+**Sky glow over edges** (Dom: the sky needs bloom where it meets the buildings). The whole sky now feeds the bloom buffer (25 % of its colour, plus more for the bright breaks), so it wraps a soft halo over rooflines and rock edges in front of it, as a bright sky does on camera. Bloom adds that light back onto the sky too (about 10x over a large area), so the sky's own colour is divided down to match and the storm exposure went from 2.2 to 1.45 to keep its contrast (sky region mean 0.33 vs 0.36 before). docs/screenshots/stage2-sky-edge-glow.jpg.
+
+## 2026-11-11 - Light bake step 1 (Blender only, no engine changes)
+
+Tools: `tools/lightbake/jkl_export.py <level> [--density N]` reads the level from the GOBs: geometry, textures in the level's palette, glowing texels (the engine's colormap test), and packs a light map atlas (one planar rectangle per surface; 12escape at 32 texels/unit = 1.8 M texels in 4096x1024). `tools/blender/lightbake.py hd/lightbake/<level>` builds it in Blender (grates see-through, glowing texels emit, sky surfaces emit), bakes direct + bounced light with Cycles on the GPU, denoises with Intel OIDN (Blender 5 compositor), and renders previews from a JK camera (1997 light / baked / light alone).
+
+- Speed: 4096x1024 at 256 samples bakes in ~5 s on the M5 Max (the first run's 2.5 min was Metal shader compilation). Density and samples can go much higher.
+- Units: light map 1.0 = texture at full brightness, like the 1997 corner light. Glowing texels need emission ~40 to light rooms at game brightness (6 gave a median of 0.01).
+- Hangar (12escape): works. The red door panels throw a red glow on the back wall, strips light the ceiling, corners darken. Fairly even overall because strips line every wall; floor strips are flush so they don't pool on the floor (reflections handle that look).
+- **Main finding: many rooms have no glowing textures.** Yun's room (07yun) is lit entirely by the designers' invisible JED lights, which aren't in the shipped levels (only their per-corner result is). The bake has nothing to work with there; with the 1997 light dimmed as fill, the room just goes dark.
+- Options: (A) recover the designers' lights by fitting point lights to the 1997 corner light (peaks of intensity), then bake those plus the glowing textures with shadows and bounce; (B) keep the 1997 light as the base and add the bake on top (glow and bounce colour only). Asked Dom.
+- Screenshots: docs/screenshots/lightbake-step1-hangar.jpg, lightbake-step1-yun.jpg (the shuttle is a model, not level geometry, so it's absent from the bake scene).
+
+**Approach A (Dom chose it): recover the designers' lights.** `tools/lightbake/fit_lights.py <folder>` models each corner's 1997 brightness as a sum of JED-style lights (intensity fading linearly to zero at a range), with candidates at every sector centre and part way to its corners, 5 ranges each, and a greedy non-negative fit (add the candidate that best explains the remainder, refit all with NNLS). `lightbake.py` places them as Cycles point lights (relative power a * r^2), bakes them alone, calibrates their power against the fitted model at every surface corner, then bakes everything (glow strength 15, since the designers usually put a light at each lamp anyway).
+- 07yun: 63 lights, fit R^2 0.89; baked vs 1997 correlation 0.63. The bake gives a real pool of warm light on the back wall behind the arch, with falloff and soft shadows.
+- 12escape: 176 lights, R^2 0.72, but baked vs 1997 correlation only 0.24: once walls actually block the light, the recovered lights don't reproduce the hangar (JED's lighting apparently ignored occlusion, so its lights shone through walls).
+- docs/screenshots/lightbake-recovered-lights.jpg.
+
+**Dom's notes on the first recovered-light bake**: it flattened the hangar's back wall; the goal is dynamic shadows and realistic falloff. His dream frame for the hangar start view: almost black between lights; wall strips spilling red and white light onto the panels beside them; a raking key light across the back wall with a visible beam in haze; a wet, glossy floor mirroring every strip. The bake can supply the darkness, the strip spill and the key light's shape; the beam, haze and wet floor come from the engine's shafts/haze/reflections and floor material maps.
+
+**Wall-aware fit** (`fit_lights.py --occlusion`): candidates only light corners they can see (ray cast in Blender: `tools/blender/light_visibility.py`, BVH of opaque surfaces, grates excluded; cached in visibility.npz). Yun's room fits better with walls than without (R^2 0.917 vs 0.893), so JED's lighting did respect walls. Hangar: 77 M rays in 96 s, 7 % of pairs in view.
+Bake controls added: `--bounces` (default 2), `--soft` (light size, default 0.01), `--floor` (share of the fit's constant floor kept, default 0), `--power`.
+
+## 2026-11-11 - Art direction: lit like a film (Dom)
+
+Every scene should be lit like a cinematic Star Wars shot: key light from the side, rim light on every character, never flat. Applies to everything from here on:
+- Levels: the light bake stays dark and contrasty (low fill, real falloff, shadows); pools of light, not wash.
+- Characters and props: a lighting rig in the model shader. Key from the strongest nearby real source (the recovered designer lights and glowing surfaces give positions and colours), a rim light that outlines silhouettes against the background (coloured by what's behind or the nearest light), low fill. Dynamic lights (sabers, blasters) add on top.

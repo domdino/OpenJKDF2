@@ -24,6 +24,100 @@ static int rdPolyline_bBlade = 0;
 static uint32_t rdPolyline_bladeColor = 0;
 static rdVector2 rdPolyline_aBladeUVs[4];
 
+// Added (remaster): swing trails. Each saber (polyline + the joint matrix it hangs from) keeps
+// where its blade was over the last RDPOLYLINE_TRAIL_US; a fading ribbon is drawn through those
+// positions, so fast swings smear like a bright arc. Time-based, so its length doesn't depend
+// on the frame rate.
+#define RDPOLYLINE_TRAIL_SABERS (16)
+#define RDPOLYLINE_TRAIL_SAMPLES (12)
+#define RDPOLYLINE_TRAIL_US (75000)
+typedef struct rdPolylineTrail
+{
+    const void* pLine;
+    const void* pOrient;
+    int num;
+    int lastFrame;
+    uint64_t lastUs;
+    rdVector3 aBase[RDPOLYLINE_TRAIL_SAMPLES]; // world space, newest first
+    rdVector3 aTip[RDPOLYLINE_TRAIL_SAMPLES];
+    uint64_t aUs[RDPOLYLINE_TRAIL_SAMPLES];
+} rdPolylineTrail;
+static rdPolylineTrail rdPolyline_aTrails[RDPOLYLINE_TRAIL_SABERS];
+static rdVector3 polylineVerts[32]; // (tentative; defined again below with the original code)
+extern int jkPlayer_bSaberTrails;
+
+static rdPolylineTrail* rdPolyline_TrailFor(const void* pLine, const void* pOrient, uint64_t now)
+{
+    rdPolylineTrail* pOldest = &rdPolyline_aTrails[0];
+    for (int i = 0; i < RDPOLYLINE_TRAIL_SABERS; i++) {
+        rdPolylineTrail* t = &rdPolyline_aTrails[i];
+        if (t->pLine == pLine && t->pOrient == pOrient) return t;
+        if (t->lastUs < pOldest->lastUs) pOldest = t;
+    }
+    memset(pOldest, 0, sizeof(*pOldest));
+    pOldest->pLine = pLine;
+    pOldest->pOrient = pOrient;
+    pOldest->lastFrame = -1;
+    return pOldest;
+}
+
+static void rdPolyline_DrawTrail(rdThing* pLine, rdMatrix34* pOrient, flex_t R)
+{
+    rdPolyline* polyline = pLine->polyline;
+    uint64_t now = Linux_TimeUs();
+    rdVector3 wBase = pOrient->scale, wTip, v = {0.0, polyline->length, 0.0};
+    rdMatrix_TransformPoint34(&wTip, &v, pOrient);
+
+    rdPolylineTrail* t = rdPolyline_TrailFor(pLine, pOrient, now);
+    if (t->num && now - t->lastUs > 200000) t->num = 0; // not drawn for a while: start fresh
+    if (t->lastFrame != rdroid_frameTrue) {             // one sample per frame
+        int n = t->num < RDPOLYLINE_TRAIL_SAMPLES ? t->num + 1 : RDPOLYLINE_TRAIL_SAMPLES;
+        for (int i = n - 1; i > 0; i--) { t->aBase[i] = t->aBase[i - 1]; t->aTip[i] = t->aTip[i - 1]; t->aUs[i] = t->aUs[i - 1]; }
+        t->aBase[0] = wBase; t->aTip[0] = wTip; t->aUs[0] = now;
+        t->num = n;
+        t->lastFrame = rdroid_frameTrue;
+    }
+    t->lastUs = now;
+    if (!jkPlayer_bSaberTrails) return;
+
+    rdMeshinfo idxInfo;
+    idxInfo.numVertices = 4;
+    idxInfo.aVertices = polylineVerts;
+    idxInfo.paDynamicLight = 0;
+    idxInfo.intensities = 0;
+    idxInfo.aTexVerticies = rdPolyline_aBladeUVs;
+    rdMatrix34* cam = &rdCamera_g_pCurCamera->orient;
+    for (int i = 0; i + 1 < t->num; i++) {
+        uint64_t ageNew = now - t->aUs[i], ageOld = now - t->aUs[i + 1];
+        if (ageNew >= RDPOLYLINE_TRAIL_US) break;
+        if (ageOld > RDPOLYLINE_TRAIL_US) ageOld = RDPOLYLINE_TRAIL_US;
+        rdVector3 d;
+        rdVector_Sub3(&d, &t->aTip[i], &t->aTip[i + 1]);
+        flex_t sweep = rdVector_Len3(&d);
+        // Only real swings smear: an idle sway (a fraction of the glow width per frame) read as a
+        // pale flat slab beside the blade.
+        if (sweep < R * 1.2f) continue;
+        // The same light spread over a wider sweep is dimmer: intensity (vertex alpha) ~ R / sweep.
+        flex_t k = (R * 1.5f) / sweep;
+        if (k > 1.0f) k = 1.0f;
+        if (k < 0.12f) k = 0.12f;
+        rdPolyline_bladeColor = (rdPolyline_bladeColor & 0x00FFFFFF) | ((uint32_t)(k * 255.0f) << 24);
+        rdVector3 c[4];
+        rdMatrix_TransformPoint34(&c[0], &t->aTip[i], cam);
+        rdMatrix_TransformPoint34(&c[1], &t->aTip[i + 1], cam);
+        rdMatrix_TransformPoint34(&c[2], &t->aBase[i + 1], cam);
+        rdMatrix_TransformPoint34(&c[3], &t->aBase[i], cam);
+        // u = 10 + age fraction marks a trail fragment for the shader; v = 0 at the base, 1 at the tip
+        flex_t fNew = 10.0f + (flex_t)ageNew / RDPOLYLINE_TRAIL_US, fOld = 10.0f + (flex_t)ageOld / RDPOLYLINE_TRAIL_US;
+        for (int pass = 0; pass < 2; pass++) { // both windings: the ribbon can face either way
+            for (int k = 0; k < 4; k++) polylineVerts[k] = c[pass ? 3 - k : k];
+            flex_t us[4] = {fNew, fOld, fOld, fNew}, vs[4] = {1.0f, 1.0f, 0.0f, 0.0f};
+            for (int k = 0; k < 4; k++) { int src = pass ? 3 - k : k; rdPolyline_aBladeUVs[k].x = us[src]; rdPolyline_aBladeUVs[k].y = vs[src]; }
+            rdPolyline_DrawFace(pLine, &polyline->face, polylineVerts, &idxInfo);
+        }
+    }
+}
+
 #define RD_PROC_FLAG_SABER_RGB 0x40000000u
 
 static rdVector3 polylineVerts[32]; // idk the size on this
@@ -262,12 +356,25 @@ static int rdPolyline_DrawBlade(rdThing *pLine, rdMatrix34 *pOrient)
     r = r < 0 ? 0 : r > 255 ? 255 : r; g = g < 0 ? 0 : g > 255 ? 255 : g; b = b < 0 ? 0 : b > 255 ? 255 : b;
     rdPolyline_bladeColor = ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 
+    rdPolyline_bBlade = 1;
+    uint32_t bladeColor = rdPolyline_bladeColor;
+    rdPolyline_DrawTrail(pLine, pOrient, R); // uses the blade colour above; overwrites the shared verts/UVs
+    rdPolyline_bladeColor = bladeColor;      // (the trail reuses the alpha byte for its intensity)
+
+    // (re)build the blade quad: the trail reused the shared vertex/UV arrays
+    polylineVerts[0].x = tip.x + (ux + nx) * R;  polylineVerts[0].z = tip.z + (uz + nz) * R;  polylineVerts[0].y = tip.y + uy * R;
+    polylineVerts[1].x = tip.x + (ux - nx) * R;  polylineVerts[1].z = tip.z + (uz - nz) * R;  polylineVerts[1].y = tip.y + uy * R;
+    polylineVerts[2].x = base.x - (ux + nx) * R; polylineVerts[2].z = base.z - (uz + nz) * R; polylineVerts[2].y = base.y - uy * R;
+    polylineVerts[3].x = base.x - (ux - nx) * R; polylineVerts[3].z = base.z - (uz - nz) * R; polylineVerts[3].y = base.y - uy * R;
+    rdPolyline_aBladeUVs[0].x = 1.0f;  rdPolyline_aBladeUVs[0].y = lr + 1.0f;
+    rdPolyline_aBladeUVs[1].x = -1.0f; rdPolyline_aBladeUVs[1].y = lr + 1.0f;
+    rdPolyline_aBladeUVs[2].x = -1.0f; rdPolyline_aBladeUVs[2].y = -1.0f;
+    rdPolyline_aBladeUVs[3].x = 1.0f;  rdPolyline_aBladeUVs[3].y = -1.0f;
     idxInfo.numVertices = 4;
     idxInfo.aVertices = polylineVerts;
     idxInfo.paDynamicLight = 0;
     idxInfo.intensities = 0;
     idxInfo.aTexVerticies = rdPolyline_aBladeUVs;
-    rdPolyline_bBlade = 1;
     rdPolyline_DrawFace(pLine, &polyline->face, polylineVerts, &idxInfo);
     rdPolyline_bBlade = 0;
     return 1;

@@ -199,8 +199,26 @@ float saberNoise(float x)
     return mix(saberHash(i), saberHash(i + 1.0), f);
 }
 
+// Swing trail ribbon: u = 10 + age (0 = now, 1 = oldest), v = 0 at the base, 1 at the tip.
+void saberTrailMain()
+{
+    vec3 col = f_color.rgb;
+    float age = clamp(f_uv.x - 10.0, 0.0, 1.0);
+    float along = clamp(f_uv.y, 0.0, 1.0);
+    float fade = pow(1.0 - age, 1.6) * smoothstep(0.0, 0.25, along) * (1.0 - smoothstep(0.92, 1.0, along) * 0.5);
+    fade *= f_color.a; // sweep-width falloff from rdPolyline_DrawTrail
+    vec3 c = mix(vec3(1.0), col, 0.4 + 0.6 * age) * fade * 0.4 * saberStrength;
+    fragColor = vec4(c, 0.0);
+    fragColorEmiss = vec4(col * fade * 0.3 * saberStrength, 0.0);
+    fragColorPos = vec4(0.0);
+    fragColorNormal = vec4(0.0);
+    fragColorSSR = vec4(0.0);
+    fragColorMat = vec4(0.0);
+}
+
 void saberBladeMain()
 {
+    if (f_uv.x >= 9.0) { saberTrailMain(); return; }
     vec3 col = f_color.rgb;
     float lr = f_color.a * 32.0;
     float along = clamp(f_uv.y, 0.0, lr);

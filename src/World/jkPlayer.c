@@ -83,6 +83,8 @@ flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
 int jkPlayer_bSaberGlow = 1;                                 // Added (remaster): procedural glowing blades
 flex_t jkPlayer_saberGlowSize = 1.0;                        // Added (remaster)
 flex_t jkPlayer_saberGlowStrength = 1.0;                    // Added (remaster)
+int jkPlayer_bSaberTrails = 1;                              // Added (remaster): swing trails
+int jkPlayer_bAutoRenderScale = 1;                          // Added (remaster): render scale for huge displays
 int jkPlayer_bHdCutscenes = 1;                              // Added (remaster): play hdvideo/ replacements
 flex_t jkPlayer_gamma = 1.0;
 int jkPlayer_bEnableJkgm = 1;
@@ -242,6 +244,9 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterBool("r_saberGlow",                1,                          &jkPlayer_bSaberGlow,               CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_saberGlowSize",            1.0,                        &jkPlayer_saberGlowSize,            CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_saberGlowStrength",        1.0,                        &jkPlayer_saberGlowStrength,        CVARFLAG_LOCAL);
+    sithCvar_RegisterBool("r_saberTrails",              1,                          &jkPlayer_bSaberTrails,             CVARFLAG_LOCAL);
+    // Very large displays (over ~14 megapixels) render the 3D scene scaled down to that budget.
+    sithCvar_RegisterBool("r_autoRenderScale",          1,                          &jkPlayer_bAutoRenderScale,         CVARFLAG_LOCAL);
     // Play HD replacement cutscenes from hdvideo/<name>.mov|mp4|m4v when they exist (macOS).
     sithCvar_RegisterBool("r_hdCutscenes",              1,                          &jkPlayer_bHdCutscenes,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_gamma",                    1.0,                        &jkPlayer_gamma,                    CVARFLAG_LOCAL);
@@ -720,6 +725,8 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveBool(ext_fpath, "saberglow", jkPlayer_bSaberGlow);
         stdJSON_SaveFloat(ext_fpath, "saberglowsize", jkPlayer_saberGlowSize);
         stdJSON_SaveFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
+        stdJSON_SaveBool(ext_fpath, "sabertrails", jkPlayer_bSaberTrails);
+        stdJSON_SaveBool(ext_fpath, "autorenderscale", jkPlayer_bAutoRenderScale);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
         stdJSON_SaveBool(ext_fpath, "bEnableJkgm", jkPlayer_bEnableJkgm);
@@ -947,6 +954,8 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_bSaberGlow = stdJSON_GetBool(ext_fpath, "saberglow", jkPlayer_bSaberGlow);
         jkPlayer_saberGlowSize = stdJSON_GetFloat(ext_fpath, "saberglowsize", jkPlayer_saberGlowSize);
         jkPlayer_saberGlowStrength = stdJSON_GetFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
+        jkPlayer_bSaberTrails = stdJSON_GetBool(ext_fpath, "sabertrails", jkPlayer_bSaberTrails);
+        jkPlayer_bAutoRenderScale = stdJSON_GetBool(ext_fpath, "autorenderscale", jkPlayer_bAutoRenderScale);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);
 

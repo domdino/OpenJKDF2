@@ -2046,8 +2046,15 @@ static void rdModel3_ProbeLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* 
         flex_t sum = 0;
         for (int c = 0; c < 3; c++)
         {
-            flex_t l = gain * (pc[c] * fill + keyC[c] * keyS * key * key + rimC[c] * rimS * rim
-                               + cube[5][c] * (under + floorRim)) + dyn;
+            // The body's own light (fill, key) stops at full brightness, so a model under a
+            // skylight doesn't wash out; only the edges (rims, floor light) go past it and glow.
+            flex_t body = gain * (pc[c] * fill + keyC[c] * keyS * key * key) + dyn;
+            if (body > 1.0f) body = 1.0f;
+            // The back-light rim tops out at 0.6 (it's often white skylight); the floor light
+            // can go past full brightness and glow (strips under the feet).
+            flex_t rimL = gain * rimC[c] * rimS * rim;
+            if (rimL > 0.6f) rimL = 0.6f;
+            flex_t l = body + rimL + gain * cube[5][c] * (under + floorRim);
             if (l < floorL) l = floorL;
             if (l > cap) l = cap;
             rdModel3_aProbeRGB[c * nv + i] = l;

@@ -26,10 +26,10 @@ That breaks down into concrete engine work:
 |---|---|---|
 | Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | Done (playtesting) |
 | Wet floors reflecting light strips, sky and objects | Screen-space reflections | Done (playtesting) |
-| Haze and light shafts | Depth-based haze lit by the scene, screen-space light shafts | Done (playtesting); volumetric fog, smoke and steam [planned](../docs/stage2-atmosphere-plan.md) |
+| Haze and light shafts | Volumetric fog lit by the baked light, screen-space light shafts | Fog on all 25 levels (playtesting); height fog, smoke and steam [next](../docs/stage2-atmosphere-plan.md) |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
-| Every shot lit like a film: side key light, rim light on every character, nothing flat | Light bake with recovered designer lights (Blender Cycles); light probes so characters take the baked light's colour and direction, plus key, rim and floor light | Light maps baking for all 25 levels; light probes in game (playtesting) |
+| Every shot lit like a film: side key light, rim light on every character, nothing flat | Light bake with recovered designer lights (Blender Cycles); light probes so characters take the baked light's colour and direction, plus key, rim and floor light | All 25 levels baked: light maps and light probes in game (playtesting) |
 | Crisp, detailed, grimy surfaces | HD textures with roughness and normal maps | Stage 3 |
 | Detailed characters | New models through a Blender pipeline | Stage 4 |
 
@@ -62,8 +62,10 @@ That breaks down into concrete engine work:
 - [x] Cinematic key and rim light on characters and props (first pass)
 - [x] Light bake in game: baked light maps replace the 1997 corner light on six test levels (`r_lightmaps`, in the remaster preset) ([plan](../docs/stage2-lightbake-plan.md))
 - [x] Light probes: characters and props lit by the bake around them (colour, direction, floor light)
-- [ ] Light bake: tune and bake every level (sun for day levels)
-- [ ] Atmosphere: volumetric fog lit by the bake, height fog, smoke and steam ([plan](../docs/stage2-atmosphere-plan.md))
+- [x] Light bake on all 25 levels: light maps, light probes and light volumes
+- [ ] Light bake tuning (sun for day levels)
+- [x] Volumetric fog lit by the baked light (`r_volumetricFog`, all 25 levels)
+- [ ] Atmosphere, continued: height fog, hand-placed fog and smoke, steam ([plan](../docs/stage2-atmosphere-plan.md))
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist
@@ -113,79 +115,43 @@ That breaks down into concrete engine work:
 
 ## Latest
 
-Work in progress lives on feature branches until it's been playtested; the newest items below are on [`stage2-light-probes`](https://github.com/domdino/OpenJKDF2/tree/stage2-light-probes).
+Every comparison below is the real 1997 game (original models, textures and lighting) on the left and the remaster on the right. Work in progress lives on feature branches until it's been playtested; the newest items are on [`stage2-atmosphere`](https://github.com/domdino/OpenJKDF2/tree/stage2-atmosphere).
 
-**Baked lighting.** Every level's lighting is being re-baked in Blender's Cycles path tracer: the level designers' lights (recovered from the 1997 lighting), every glowing strip and lamp as a real light, and sky light through openings, with shadows and bounce light. The result is a light map the engine uses in place of the 1997 corner light, plus light probes that light characters and props by what's around them. Kyle walking over the hangar's red floor strips now catches their red as a hot edge on his legs, with a rim from the white lights ahead. (Known: the shuttle's lit face blows out; models aren't part of the bake yet.)
+**Baked lighting, light probes and volumetric fog.** Every level's lighting has been re-baked in Blender's Cycles path tracer: the level designers' lights (recovered from the 1997 lighting), every glowing strip and lamp as a real light, and sky light through openings, with shadows and bounce light. Levels use the result as light maps; characters and props take their light from baked light probes (colour, direction, a rim from the light behind them and the glow of the floor under their feet); and the air is filled with volumetric fog lit by the same bake, so it glows red over the hangar strips and stays dark between lights. All 25 levels are baked.
 
-![Hangar: the 1997 game vs the remaster with light maps and light probes](../docs/screenshots/stage2-baked-light-hangar.jpg)
+![Hangar: the 1997 game vs the remaster](../docs/screenshots/stage2-baked-light-hangar.jpg)
 
-Tuning the character light against a paint-over reference (floor light strength, then the back-light rim):
+Six levels, 1997 vs remaster:
 
-![Floor light on Kyle](../docs/screenshots/stage2-light-probes-floor-light.jpg)
+![Baked lighting on six levels](../docs/screenshots/stage2-lightmaps-in-game.jpg)
 
-![Back-light rim](../docs/screenshots/stage2-light-probes-rim.jpg)
+**Everything together:** HD textures, Jedi Academy's cast on the original skeletons, per-pixel lighting, wet reflections, bloom, ambient occlusion, a filmic grade and the new skies (open the console with backtick and type `remaster 1`; `remaster 0` for the original):
 
-Light maps on six levels: the 1997 game (left) vs the remaster (right):
+![The 1997 game vs the remaster](../docs/screenshots/stage2-1997-vs-remaster.jpg)
 
-![Light maps in game](../docs/screenshots/stage2-lightmaps-in-game.jpg)
+**Skies:** a volumetric cloud sky on the storm levels and presets for the rest (Nar Shaddaa smog, Sulon overcast, day and sunset skies):
 
-**Volumetric cloud sky** on the storm levels, and sky presets for the rest (Nar Shaddaa smog, Sulon overcast, day and sunset skies):
+![Skies, 1997 vs remaster](../docs/screenshots/stage2-volumetric-sky.jpg)
 
-![Volumetric sky](../docs/screenshots/stage2-volumetric-sky.jpg)
+**Lightsaber:** a glowing plasma blade instead of a flat textured strip, a white-hot core, a deep coloured sheath and a halo that lights the room, with swing trails. ([video](../docs/screenshots/stage4-saber-blade.mp4))
 
-**Texture God on every level:** my own AI upscaling and PBR pipeline now covers every level texture, including per-level palette variants (507 textures in game):
+![Lightsaber, 1997 vs remaster](../docs/screenshots/stage4-saber-blade.jpg)
 
-![Texture God palette variants](../docs/screenshots/stage3-texturegod-palette-variants.jpg)
-
-Next up: [atmosphere](../docs/stage2-atmosphere-plan.md), real volumetric fog lit by the baked light (glowing red over the hangar strips, dark between), height fog in pits and canyons, and hand-placed fog and smoke to hide rough terrain.
-
-All 25 cutscenes now play upscaled in game (Topaz, 1920x900), and first-person view shows Kyle's own gloves and sleeves:
-
-![Cutscenes, original vs upscale](../docs/screenshots/stage5-cutscenes-hd.jpg)
-
-The lightsaber blade is now a glowing plasma beam instead of a flat textured strip: a white-hot core, a deep coloured sheath and a soft halo that lights the room, with plasma that ripples and hums. Enemy sabers keep their own colours. ([video](../docs/screenshots/stage4-saber-blade.mp4))
-
-![Lightsaber blade, 1997 vs remaster](../docs/screenshots/stage4-saber-blade.jpg)
-
-Stage 4: most of Jedi Knight's cast now uses Jedi Academy's characters, fitted onto the original skeletons so every 1997 animation still drives them. Same lighting and framing for each pair:
+**The cast:** most of Jedi Knight's characters now use Jedi Academy's models, fitted onto the original skeletons so every 1997 animation still drives them (same lighting and framing for each pair):
 
 ![The cast, 1997 vs remaster](../docs/screenshots/stage4-cast-sheet.jpg)
 
-In game, Nar Shaddaa (left 1997, right remaster):
-
 ![In game: Nar Shaddaa](../docs/screenshots/cast/ingame-narshadda.jpg)
 
-Stage 4: the engine now supports skinned characters, and Jedi Academy's Kyle runs in Jedi Knight on the original skeleton and animations (left original, right Academy Kyle; bottom: mid-run, same animation).
+**Texture God on every level:** my own AI upscaling and PBR pipeline covers every level texture, including per-level palette variants (507 textures in game). Original texture (left of each pair) vs Texture God:
 
-![Jedi Academy Kyle in Jedi Knight](../docs/screenshots/stage4-academy-kyle.png)
+![Texture God palette variants](../docs/screenshots/stage3-texturegod-palette-variants.jpg)
 
-Stage 5 has started. Every cutscene is extracted for upscaling, and the engine now plays HD replacement videos (H.264, HEVC or ProRes, any resolution or frame rate) in place of the 640x300 originals, decoded on the Mac's media engine. The original keeps running underneath for timing, sound and subtitles. Left: original. Right: a black-and-white 1080p test file proving the swap.
+**Cutscenes:** all 25 play upscaled in game (Topaz, 1920x900), original (left) vs upscale:
 
-![Original vs HD replacement cutscene](../docs/screenshots/stage5-hd-cutscene-test.png)
+![Cutscenes, original vs upscale](../docs/screenshots/stage5-cutscenes-hd.jpg)
 
-Stage 3 has started. Top: the remastered look on the original textures. Bottom: the same with HD textures from the community Neural Upscale pack (the Sarris building and Boc's rock wall gain real detail). The game's own loader already reads HD texture packs; new tools extract every original texture for upscaling and rebuild packs whose files lost their names.
-
-![Original vs HD textures](../docs/screenshots/stage3-hd-pack-off-on.png)
-
-The whole Stage 2 look behind one switch: open the console (backtick) and type `remaster 1` (`remaster 0` for the original). Top: original game. Bottom: remaster preset (per-pixel light with wet highlights, coloured saber light, reflections, haze, light shafts, grade, bloom, ambient occlusion).
-
-![Original vs remaster preset](../docs/screenshots/stage2-remaster-preset-off-on.png)
-
-Haze and light shafts, first pass (left off, right on): the hangar gets a hazy glow around the shuttle and light spilling from the wall strips; the rooftop's sky and far building sit back in hazy air.
-
-![Haze and light shafts off and on](../docs/screenshots/stage2-haze-shafts-off-on.png)
-
-Screen-space reflections, first pass: wet floors now mirror what's around them (top off, bottom on). Hangar floor reflecting the shuttle and light strips, the wet rooftop reflecting the figures, and Boc's saber throwing a pink pool.
-
-![Reflections off and on](../docs/screenshots/stage2-reflections-off-on.png)
-
-Per-pixel lighting, phase 1. The same light near the far wall: the original per-vertex lighting (left) barely shows it; per-pixel (right) gives a proper pool of light and a wet glint on the ceiling ring.
-
-![Per-pixel lighting before and after](../docs/screenshots/stage2-perpixel-light-before-after.png)
-
-Built-in effects, all running natively. Top: original, bloom. Bottom: ambient occlusion, everything on with a test grade.
-
-![Effects comparison](../docs/screenshots/stage2-effects-base-bloom-ssao-all.png)
+Next up: [atmosphere](../docs/stage2-atmosphere-plan.md), continued: height fog in pits and canyons, hand-placed fog and smoke to hide rough terrain, smoke and steam.
 
 Decisions, findings and dead ends are logged as I go in [docs/DECISIONS.md](../docs/DECISIONS.md).
 

@@ -117,7 +117,7 @@ Work in progress lives on feature branches until it's been playtested; the newes
 
 **Baked lighting.** Every level's lighting is being re-baked in Blender's Cycles path tracer: the level designers' lights (recovered from the 1997 lighting), every glowing strip and lamp as a real light, and sky light through openings, with shadows and bounce light. The result is a light map the engine uses in place of the 1997 corner light, plus light probes that light characters and props by what's around them. Kyle walking over the hangar's red floor strips now catches their red as a hot edge on his legs, with a rim from the white lights ahead. (Known: the shuttle's lit face blows out; models aren't part of the bake yet.)
 
-![Hangar: 1997 corner light vs light maps and light probes](../docs/screenshots/stage2-baked-light-hangar.jpg)
+![Hangar: the 1997 game vs the remaster with light maps and light probes](../docs/screenshots/stage2-baked-light-hangar.jpg)
 
 Tuning the character light against a paint-over reference (floor light strength, then the back-light rim):
 

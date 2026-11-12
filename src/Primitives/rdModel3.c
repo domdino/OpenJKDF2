@@ -1933,7 +1933,8 @@ static int rdModel3_probeRGBCap = 0;
 //   key:  the probes' brightest direction, mixed with the screen-side key so there's always a lit
 //         and a shadow side, in the colour of the light from that direction,
 //   rim:  light from behind the model (as seen from the camera) on the silhouette, in its colour.
-//   under: light the floor throws up (r_cineUnder), wrapped onto sideways faces, strongest low.
+//   under: light the floor throws up (r_cineUnder), wrapped onto sideways faces, strongest low,
+//          plus a hard floor-coloured rim on the lower silhouette (r_cineFloorRim) that can glow.
 // Each vertex mixes the floor-level and chest-height probes by its own height, so legs pick up
 // the light of floor strips and pools. Dynamic lights (sabers, blasters, the headlight) still add
 // in on top, from the 1997 vertex light.
@@ -2002,6 +2003,16 @@ static void rdModel3_ProbeLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* 
         float pc[3], keyC[3], rimC[3];
         sithLightProbes_Eval(cube, &nW, pc);
         sithLightProbes_Eval(cube, &keyW, keyC);
+        // Fill and key keep only part of the probes' colour (r_cineSat), so a red-lit room leaves
+        // the body its own colours; the rim and floor light carry the full colour on the edges.
+        {
+            float lp = rdModel3_Luma(pc), lk = rdModel3_Luma(keyC), sat = jkPlayer_cineSat;
+            for (int c = 0; c < 3; c++)
+            {
+                pc[c] = lp + (pc[c] - lp) * sat;
+                keyC[c] = lk + (keyC[c] - lk) * sat;
+            }
+        }
         sithLightProbes_Eval(cube, &back, rimC);
         // Keep a rim even in flat light (a quarter of the key), tinted by what's behind.
         float rimL = rdModel3_Luma(rimC), keyLu = rdModel3_Luma(keyC);
@@ -2020,20 +2031,32 @@ static void rdModel3_ProbeLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* 
         flex_t rim = (1 - ndv) * (1 - ndv) * (1 - ndv);
         // Under light: what the floor throws up (floor strips, pools) wraps round onto sideways
         // faces too, strongest at the shins and fading up the body.
+        // Floor effects fade over a character's height above the floor (0.25 units), so a
+        // shuttle hanging overhead doesn't catch them.
+        float hf = 1.0f - (pW.z - zLow) / 0.25f;
+        if (hf < 0) hf = 0;
+        if (hf > 1) hf = 1;
         float wrapU = (1.0f - nW.z) * 0.5f;
-        flex_t under = wrapU * wrapU * (1.0f - 0.6f * t) * jkPlayer_cineUnder;
+        flex_t under = wrapU * wrapU * hf * hf * jkPlayer_cineUnder;
+        // Floor rim: the silhouette's lower edges catch the floor light hard (a red edge along
+        // the boots); past full brightness it glows (rdCache passes the excess to the shader).
+        flex_t floorRim = rim * hf * jkPlayer_cineFloorRim;
         flex_t dyn = pMesh->vertices_unk[i] - amb;   // dynamic lights on top of the sector light
         if (dyn < 0) dyn = 0;
         flex_t sum = 0;
         for (int c = 0; c < 3; c++)
         {
-            flex_t l = gain * (pc[c] * fill + keyC[c] * keyS * key * key + rimC[c] * rimS * rim + cube[5][c] * under) + dyn;
+            flex_t l = gain * (pc[c] * fill + keyC[c] * keyS * key * key + rimC[c] * rimS * rim
+                               + cube[5][c] * (under + floorRim)) + dyn;
             if (l < floorL) l = floorL;
             if (l > cap) l = cap;
             rdModel3_aProbeRGB[c * nv + i] = l;
             sum += l;
         }
-        pMesh->vertices_unk[i] = sum / 3.0f;
+        // The RGB face path adds vertices_unk on top of the colour (MOTS dynamic light); dyn is
+        // already in the colour above, so zero it.
+        pMesh->vertices_unk[i] = 0;
+        (void)sum;
     }
     pMesh->paRedIntensities = rdModel3_aProbeRGB;
     pMesh->paGreenIntensities = rdModel3_aProbeRGB + nv;

@@ -508,6 +508,7 @@ vec4 bilinear_paletted_light(float index)
 // Added (remaster): baked light maps (std3D_LightmapUpdate). Each level face knows its world
 // surface; its record says how world positions map into the light map atlas.
 flat in float f_lmSurf;
+in float f_glow; // Added (remaster): light-probe overbright on models (rdCache), in the vertex light's hue
 uniform int u_lmOn;
 uniform sampler2D u_lmAtlas;
 uniform sampler2D u_lmData;   // per surface: 3 texels (atlas u plane, atlas v plane, clamp rect)
@@ -683,6 +684,14 @@ void main(void)
         if (bNoSpec) ppl_spec = vec3(0.0);
         // Highlights take the surface colour on metals, stay mostly white otherwise.
         main_color.rgb += ppl_spec * mix(vec3(1.0), sampled_color.rgb, mix(0.35, 1.0, mat_metal));
+    }
+    // Added (remaster): where the baked light on a model goes past full (a boot next to a floor
+    // strip), the excess glows on top in the light's colour, whatever the texture: an edge that
+    // lights up, and bloom picks it up.
+    if (f_glow > 0.0)
+    {
+        vec3 hue = f_color.rgb / max(max(f_color.r, max(f_color.g, f_color.b)), 0.05);
+        main_color.rgb += hue * f_glow;
     }
     float should_write_normals = 1.0;
     float orig_alpha = main_color.a;

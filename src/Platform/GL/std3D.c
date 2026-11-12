@@ -167,6 +167,7 @@ static GLint uniform_skyBelow = -1, uniform_skyFlash = -1;
 static GLint uniform_model = -1, uniform_cine = -1; // Added (remaster): cinematic key/rim light on models
 // Added (remaster): baked light maps (see std3D_LightmapUpdate).
 GLint attribute_v_lmSurf = -1;
+GLint attribute_v_glow = -1; // Added (remaster): light-probe glow on models (vertex nz)
 static GLint uniform_lmOn = -1, uniform_lmAtlas = -1, uniform_lmData = -1, uniform_lmParams = -1, uniform_lmCamPos = -1;
 static float std3D_skyWorldAxes[9]; // world X, Y, Z axes in camera space (last world draw)
 static int std3D_frameNumGlow = 0;
@@ -723,6 +724,7 @@ int init_resources()
     uniform_model = std3D_tryFindUniform(programDefault, "u_model");
     uniform_cine = std3D_tryFindUniform(programDefault, "u_cine");
     attribute_v_lmSurf = std3D_tryFindAttribute(programDefault, "v_lmSurf"); // Added (remaster): light maps
+    attribute_v_glow = std3D_tryFindAttribute(programDefault, "v_glow"); // Added (remaster): light probes
     uniform_lmOn = std3D_tryFindUniform(programDefault, "u_lmOn");
     uniform_lmAtlas = std3D_tryFindUniform(programDefault, "u_lmAtlas");
     uniform_lmData = std3D_tryFindUniform(programDefault, "u_lmData");
@@ -1406,6 +1408,10 @@ int std3D_StartScene()
         glEnableVertexAttribArray(attribute_v_invz);
     }
     // Added (remaster): light map surface (+1, 0 = none) rides in the vertex's spare ny.
+    if (attribute_v_glow >= 0) {
+        glVertexAttribPointer(attribute_v_glow, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, nz));
+        glEnableVertexAttribArray(attribute_v_glow);
+    }
     if (attribute_v_lmSurf >= 0) {
         glVertexAttribPointer(attribute_v_lmSurf, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, ny));
         glEnableVertexAttribArray(attribute_v_lmSurf);
@@ -1426,6 +1432,7 @@ int std3D_EndScene()
     glDisableVertexAttribArray(attribute_v_uv);
     if (attribute_v_invz >= 0) glDisableVertexAttribArray(attribute_v_invz); // Added (remaster)
     if (attribute_v_lmSurf >= 0) glDisableVertexAttribArray(attribute_v_lmSurf); // Added (remaster)
+    if (attribute_v_glow >= 0) glDisableVertexAttribArray(attribute_v_glow); // Added (remaster)
     glDisableVertexAttribArray(attribute_v_color);
     glDisableVertexAttribArray(attribute_coord3d);
 

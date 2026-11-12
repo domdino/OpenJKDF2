@@ -721,6 +721,19 @@ int rdCache_SendFaceListToHardware()
                     flex_t* iterBlueIntense = active_6c->paBlueIntensities;
 
                     vert_lights_iter_cnt = active_6c->numVertices;
+                    // Added (remaster): light-probe faces keep what goes past full light as glow
+                    // (vertexIntensities is free on RGB faces), before it's clamped away.
+                    if (active_6c->rgbLight)
+                    {
+                        for (int gi = 0; gi < active_6c->numVertices; gi++)
+                        {
+                            flex_t mx = active_6c->paRedIntensities[gi];
+                            if (active_6c->paGreenIntensities[gi] > mx) mx = active_6c->paGreenIntensities[gi];
+                            if (active_6c->paBlueIntensities[gi] > mx) mx = active_6c->paBlueIntensities[gi];
+                            mx += active_6c->extralight - 1.0;
+                            active_6c->vertexIntensities[gi] = mx > 0 ? mx * jkPlayer_cineGlow : 0;
+                        }
+                    }
                     do
                     {
                         *iterRedIntense = stdMath_Clamp(stdMath_Clamp(*iterRedIntense + active_6c->extralight, 0.0, 1.0), v148, 1.0) * 255.0;
@@ -823,6 +836,8 @@ int rdCache_SendFaceListToHardware()
                 rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
                 // Added (remaster): world surface + 1 for baked light maps (0 = none).
                 rdCache_aHWVertices[rdCache_totalVerts].ny = (float)(active_6c->lightmapSurface + 1);
+                if (active_6c->rgbLight && lighting_capability == 3) // Added (remaster): light-probe glow
+                    rdCache_aHWVertices[rdCache_totalVerts].nz = active_6c->vertexIntensities[vtx_idx];
 #endif
                 if ( lighting_capability == 0 )
                 {

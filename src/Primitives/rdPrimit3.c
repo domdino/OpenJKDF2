@@ -1061,24 +1061,24 @@ void rdPrimit3_NoClipFaceRGB
                     if (fVar12 < 0.0) {
                         fVar12 = 0.0;
                     }
-                    else if (fVar12 > 1.0) {
-                        fVar12 = 1.0;
+                    else if (fVar12 > 4.0) {
+                        fVar12 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                     }
                     *pfVar6 = fVar12;
                     fVar12 = pfVar7[*piVar14] + pfVar8[*piVar14];
                     if (fVar12 < 0.0) {
                         fVar12 = 0.0;
                     }
-                    else if (fVar12 > 1.0) {
-                        fVar12 = 1.0;
+                    else if (fVar12 > 4.0) {
+                        fVar12 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                     }
                     *pfVar5 = fVar12;
                     fVar12 = pfVar10[*piVar14] + pfVar8[*piVar14];
                     if (fVar12 < 0.0) {
                         fVar12 = 0.0;
                     }
-                    else if (fVar12 > 1.0) {
-                        fVar12 = 1.0;
+                    else if (fVar12 > 4.0) {
+                        fVar12 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                     }
                     prVar18 = prVar18 + 1;
                     *blueIter = fVar12;
@@ -1120,9 +1120,9 @@ void rdPrimit3_NoClipFaceRGB
                     _vertexDst->aVertices[i] = _vertexSrc->aVertices[vtxIdx];
                     _vertexDst->aTexVerticies[i] = _vertexSrc->aTexVerticies[uvIdx];
                     rdVector_Add2Acc(&_vertexDst->aTexVerticies[i], idkIn);
-                    _vertexDst->paRedIntensities[i] = stdMath_Clamp(_vertexSrc->paRedIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 1.0);
-                    _vertexDst->paGreenIntensities[i] = stdMath_Clamp(_vertexSrc->paGreenIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 1.0);
-                    _vertexDst->paBlueIntensities[i] = stdMath_Clamp(_vertexSrc->paBlueIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 1.0);
+                    _vertexDst->paRedIntensities[i] = stdMath_Clamp(_vertexSrc->paRedIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 4.0); // Added (remaster): was 1 (see above)
+                    _vertexDst->paGreenIntensities[i] = stdMath_Clamp(_vertexSrc->paGreenIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 4.0); // Added (remaster): was 1 (see above)
+                    _vertexDst->paBlueIntensities[i] = stdMath_Clamp(_vertexSrc->paBlueIntensities[vtxIdx] + _vertexSrc->paDynamicLight[vtxIdx], 0.0, 4.0); // Added (remaster): was 1 (see above)
                 }
 
                 _vertexDst->numVertices = _vertexSrc->numVertices;
@@ -1287,8 +1287,8 @@ rdPrimit3_ClipFaceRGB
                     if (fVar14 < 0.0) {
                         fVar14 = 0.0;
                     }
-                    else if (fVar14 > 1.0) {
-                        fVar14 = 1.0;
+                    else if (fVar14 > 4.0) {
+                        fVar14 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                     }
                     pfVar2 = (flex_t *)(iVar20 + (intptr_t)piVar17);
                     *(flex_t *)((intptr_t)pfVar2 + ((intptr_t)pfVar11 - (intptr_t)pfVar10)) = fVar14;
@@ -1296,16 +1296,16 @@ rdPrimit3_ClipFaceRGB
                     if (fVar14 < 0.0) {
                         fVar14 = 0.0;
                     }
-                    else if (fVar14 > 1.0) {
-                        fVar14 = 1.0;
+                    else if (fVar14 > 4.0) {
+                        fVar14 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                     }
                     *pfVar2 = fVar14;
                     fVar14 = pfVar8[iVar12] + pfVar6[iVar12];
                     if (fVar14 < 0.0) {
                         fVar14 = 0.0;
                     }
-                    else if (fVar14 > 1.0) {
-                        fVar14 = 1.0;
+                    else if (fVar14 > 4.0) {
+                        fVar14 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                     }
                     prVar19 = prVar19 + 1;
                     *(flex_t *)(iVar22 + (intptr_t)piVar17) = fVar14;
@@ -1410,8 +1410,8 @@ rdPrimit3_ClipFaceRGB
                         if (fVar14 < 0.0) {
                             fVar14 = 0.0;
                         }
-                        else if (fVar14 > 1.0) {
-                            fVar14 = 1.0;
+                        else if (fVar14 > 4.0) {
+                            fVar14 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                         }
                         *redIter = fVar14;
 
@@ -1419,16 +1419,16 @@ rdPrimit3_ClipFaceRGB
                         if (fVar14 < 0.0) {
                             fVar14 = 0.0;
                         }
-                        else if (fVar14 > 1.0) {
-                            fVar14 = 1.0;
+                        else if (fVar14 > 4.0) {
+                            fVar14 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                         }
                         *greenIter = fVar14;
                         fVar14 = pfVar8[iVar12] + pfVar5[iVar12];
                         if (fVar14 < 0.0) {
                             fVar14 = 0.0;
                         }
-                        else if (fVar14 > 1.0) {
-                            fVar14 = 1.0;
+                        else if (fVar14 > 4.0) {
+                            fVar14 = 4.0; // Added (remaster): was 1; rdCache clamps to 1 later, light probes keep the excess as glow
                         }
                         local_18++;
                         *blueIter = fVar14;

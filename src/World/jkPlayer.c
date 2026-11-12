@@ -86,7 +86,10 @@ int jkPlayer_bCinematicLight = 0;                          // Added (remaster): 
 flex_t jkPlayer_cineKey = 1.2;
 flex_t jkPlayer_cineFill = 0.35;
 flex_t jkPlayer_cineRim = 1.6;
-flex_t jkPlayer_cineUnder = 2.0;                          // Added (remaster): floor light on models (light probes)
+flex_t jkPlayer_cineFloorRim = 3.0;                       // Added (remaster): floor-lit rim on models' lower edges
+flex_t jkPlayer_cineGlow = 0.6;                            // Added (remaster): overbright model light added as glow
+flex_t jkPlayer_cineSat = 1.0;                             // Added (remaster): share of the probe colour in a model's fill and key
+flex_t jkPlayer_cineUnder = 1.0;                          // Added (remaster): floor light on models (light probes)
 int jkPlayer_bLightmaps = 0;                                // Added (remaster): baked light maps (hd/jkgm/lightmaps)
 flex_t jkPlayer_lightmapFill = -1.0;                        // Added (remaster): <0 = the sidecar's own fill
 flex_t jkPlayer_lightmapGain = 1.0;
@@ -278,7 +281,10 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_lightmapMax",              2.5,                        &jkPlayer_lightmapMax,              CVARFLAG_LOCAL);
     // Baked light probes (tools/blender/probe_bake.py): models take their light, in colour and
     // direction, from the bake around them. Needs r_cinematicLight (it replaces its key and fill).
-    sithCvar_RegisterFlex("r_cineUnder",                2.0,                        &jkPlayer_cineUnder,                CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineUnder",                1.0,                        &jkPlayer_cineUnder,                CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineFloorRim",             3.0,                        &jkPlayer_cineFloorRim,             CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineGlow",                 0.6,                        &jkPlayer_cineGlow,                 CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineSat",                  1.0,                        &jkPlayer_cineSat,                  CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_lightProbes",              0,                          &jkPlayer_bLightProbes,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skyCoverage",              -1.0,                       &jkPlayer_skyCoverage,              CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skySunAzimuth",            -999.0,                     &jkPlayer_skySunAzimuth,            CVARFLAG_LOCAL);

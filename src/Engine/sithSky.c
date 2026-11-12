@@ -33,14 +33,14 @@ static const sithSkyPreset sithSky_aPresets[] = {
     // orange from below by the city, stars where it's clear.
     {
         "narshadda", {"00starry", NULL},
-        210.0f, 18.0f,                      // a low moon
-        {0.70f, 0.74f, 0.85f}, 1.2f, 0.9f,
-        {0.010f, 0.012f, 0.022f}, {0.060f, 0.045f, 0.040f},
-        {0.05f, 0.055f, 0.07f}, {0.16f, 0.085f, 0.045f},
-        0.38f, 8.0f, 1.6f, 3.0f, 0.015f,
-        0.9f, 0.0f,
-        {0.10f, 0.06f, 0.04f},
-        1.6f,
+        210.0f, 18.0f,                      // a low, dim moon
+        {0.70f, 0.74f, 0.85f}, 0.6f, 0.8f,
+        {0.008f, 0.010f, 0.018f}, {0.13f, 0.075f, 0.050f},
+        {0.03f, 0.035f, 0.05f}, {0.30f, 0.15f, 0.07f},
+        0.62f, 2.5f, 0.8f, 1.7f, 0.012f,
+        0.22f, 0.0f,
+        {0.14f, 0.08f, 0.05f},
+        1.5f,
     },
 };
 

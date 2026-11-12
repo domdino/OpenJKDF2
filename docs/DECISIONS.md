@@ -561,3 +561,5 @@ Every scene should be lit like a cinematic Star Wars shot: key light from the si
 - A shader version came first and was dropped: models only have flat face normals on the GPU (derived from screen derivatives), so key and rim showed every triangle.
 - Next: aim the key at the strongest nearby real light (recovered designer lights once the light bake is in the engine) instead of a fixed screen direction, and tint the rim by what's behind.
 - docs/screenshots/stage2-cinematic-light-kyle.jpg
+
+**Nar Shaddaa sky tuned** (first look from under the big open sky at 11.4, -0.2): the first preset gave a dense daytime-looking starfield with small white puffs. Now a low, thin smog layer (0.8-1.7 km, coverage 0.62, density 2.5) lit orange from below by the city, a dim low moon, few faint stars, brown smog at the horizon. docs/screenshots/stage2-sky-narshadda.jpg. Captures can look at the sky with CAPTURE_WARP="11.4 -0.2 5.0 30 0 0".

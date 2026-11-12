@@ -65,7 +65,9 @@ That breaks down into concrete engine work:
 - [x] Light bake on all 25 levels: light maps, light probes and light volumes
 - [ ] Light bake tuning (sun for day levels)
 - [x] Volumetric fog lit by the baked light (`r_volumetricFog`, all 25 levels)
-- [ ] Atmosphere, continued: height fog, hand-placed fog and smoke, steam ([plan](../docs/stage2-atmosphere-plan.md))
+- [x] Height fog on outdoor levels, distance fog
+- [x] Fog volumes placed by hand in Blender (`tools/blender/atmos_volumes.py`)
+- [ ] Atmosphere, continued: smoke and steam emitters, dust ([plan](../docs/stage2-atmosphere-plan.md))
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist
@@ -133,6 +135,10 @@ Six levels, 1997 vs remaster:
 
 ![Bloom and lens flare, 1997 vs remaster](../docs/screenshots/stage2-bloom-flares.jpg)
 
+**Fog placed by hand:** a Blender add-on loads any level, lets me drop boxes and ellipsoids of fog over it and exports them for the game. First use: low mist rolling across the hangar floor, lit red by the strips:
+
+![Hand-placed floor mist in the hangar](../docs/screenshots/stage2-fog-volumes-hangar.jpg)
+
 **Skies:** a volumetric cloud sky on the storm levels and presets for the rest (Nar Shaddaa smog, Sulon overcast, day and sunset skies):
 
 ![Skies, 1997 vs remaster](../docs/screenshots/stage2-volumetric-sky.jpg)
@@ -155,7 +161,7 @@ Six levels, 1997 vs remaster:
 
 ![Cutscenes, original vs upscale](../docs/screenshots/stage5-cutscenes-hd.jpg)
 
-Next up: [atmosphere](../docs/stage2-atmosphere-plan.md), continued: height fog in pits and canyons, hand-placed fog and smoke to hide rough terrain, smoke and steam.
+Next up: [atmosphere](../docs/stage2-atmosphere-plan.md), continued: smoke and steam emitters, dust in the light.
 
 Decisions, findings and dead ends are logged as I go in [docs/DECISIONS.md](../docs/DECISIONS.md).
 

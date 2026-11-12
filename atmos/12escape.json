@@ -1,0 +1,9 @@
+{
+  "level": "12escape",
+  "volumes": [
+    {"name": "floor mist", "shape": 0, "center": [-0.7, -13.0, -4.12], "size": [12.0, 22.0, 0.22],
+     "rot_z": 0, "density": 2.5, "tint": [1.0, 1.0, 1.0], "soft": 0.8},
+    {"name": "shuttle haze", "shape": 1, "center": [-0.7, -19.0, -3.2], "size": [8.0, 8.0, 3.0],
+     "rot_z": 0, "density": 0.6, "tint": [1.0, 1.0, 1.0], "soft": 0.9}
+  ]
+}

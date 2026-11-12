@@ -43,6 +43,8 @@ else
     [ -e "$ROOT/gamedata/jk1/grade" ] || ln -s "$ROOT/grade" "$ROOT/gamedata/jk1/grade"
     # HD texture packs (hd/jkgm, built by scripts/build_hd_pack.sh) load from <data>/jkgm.
     [ -d "$ROOT/hd/jkgm" ] && [ ! -e "$ROOT/gamedata/jk1/jkgm" ] && ln -s "$ROOT/hd/jkgm" "$ROOT/gamedata/jk1/jkgm"
+    # Fog volumes placed in Blender (atmos/, in the repo) load from <data>/jkgm/atmos.
+    [ -d "$ROOT/hd/jkgm" ] && [ ! -e "$ROOT/hd/jkgm/atmos" ] && ln -s "$ROOT/atmos" "$ROOT/hd/jkgm/atmos"
     # HD cutscenes (hd/video/<name>.mov|mp4|m4v, same length as the original) load from <data>/hdvideo.
     mkdir -p "$ROOT/hd/video"
     [ ! -e "$ROOT/gamedata/jk1/hdvideo" ] && ln -s "$ROOT/hd/video" "$ROOT/gamedata/jk1/hdvideo"

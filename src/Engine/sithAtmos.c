@@ -12,6 +12,7 @@
 #include "jk.h"
 #include "World/sithWorld.h"
 #include "stdPlatform.h"
+#include "General/stdJSON.h"
 
 #define BRICK 8   // points are indexed in bricks of 8x8x8 grid cells
 
@@ -37,6 +38,57 @@ static char sithAtmos_worldName[32];
 static int sithAtmos_bLoaded = 0;
 static sithAtmosLevel sithAtmos_aLevels[2];
 static sithAtmosGrid sithAtmos_aGrids[2];
+
+// Fog volumes from jkgm/atmos/<level>.json: center:3, size:3, rot_z:1, density:1, tint:3, soft:1, shape:1.
+#define VOL_STRIDE 13
+#define VOL_MAX 256
+static float sithAtmos_aVolumes[VOL_MAX * VOL_STRIDE];
+static int sithAtmos_numVolumes = 0;
+
+static void sithAtmos_LoadVolumes(const char* name)
+{
+    char path[128];
+    snprintf(path, sizeof(path), "jkgm/atmos/%s.json", name);
+    for (int i = 0; i < VOL_MAX; i++) {
+        float* v = &sithAtmos_aVolumes[i * VOL_STRIDE];
+        static const float def[VOL_STRIDE] = {0, 0, 0, 1, 1, 1, 0, 0.5f, 1, 1, 1, 0.3f, 0};
+        memcpy(v, def, sizeof(def));
+    }
+    sithAtmos_numVolumes = stdJSON_ReadObjectArray(path, "volumes", "center:3,size:3,rot_z:1,density:1,tint:3,soft:1,shape:1",
+                                                   sithAtmos_aVolumes, VOL_MAX);
+    if (sithAtmos_numVolumes)
+        stdPlatform_Printf("atmos: %d fog volumes from %s\n", sithAtmos_numVolumes, path);
+}
+
+int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize, float* pParams, float* pTint, int max)
+{
+    // Nearest first (by distance to the volume's edge), so the shader gets the ones that matter.
+    int idx[VOL_MAX];
+    float dist[VOL_MAX];
+    int n = 0;
+    for (int i = 0; i < sithAtmos_numVolumes; i++) {
+        const float* v = &sithAtmos_aVolumes[i * VOL_STRIDE];
+        float dx = v[0] - pCamPos->x, dy = v[1] - pCamPos->y, dz = v[2] - pCamPos->z;
+        float r = 0.5f * sqrtf(v[3] * v[3] + v[4] * v[4] + v[5] * v[5]);
+        float d = sqrtf(dx * dx + dy * dy + dz * dz) - r;
+        if (d > 150.0f) continue;
+        int j = n++;
+        while (j > 0 && dist[j - 1] > d) { idx[j] = idx[j - 1]; dist[j] = dist[j - 1]; j--; }
+        idx[j] = i;
+        dist[j] = d;
+    }
+    if (n > max) n = max;
+    for (int k = 0; k < n; k++) {
+        const float* v = &sithAtmos_aVolumes[idx[k] * VOL_STRIDE];
+        float a = v[6] * 3.14159265f / 180.0f;
+        pCenter[k * 4 + 0] = v[0]; pCenter[k * 4 + 1] = v[1]; pCenter[k * 4 + 2] = v[2]; pCenter[k * 4 + 3] = v[12];
+        pSize[k * 4 + 0] = fmaxf(v[3], 0.01f) * 0.5f; pSize[k * 4 + 1] = fmaxf(v[4], 0.01f) * 0.5f;
+        pSize[k * 4 + 2] = fmaxf(v[5], 0.01f) * 0.5f; pSize[k * 4 + 3] = fminf(fmaxf(v[11], 0.01f), 1.0f);
+        pParams[k * 4 + 0] = cosf(a); pParams[k * 4 + 1] = sinf(a); pParams[k * 4 + 2] = v[7]; pParams[k * 4 + 3] = 0.0f;
+        pTint[k * 4 + 0] = v[8]; pTint[k * 4 + 1] = v[9]; pTint[k * 4 + 2] = v[10]; pTint[k * 4 + 3] = 0.0f;
+    }
+    return n;
+}
 
 static float sithAtmos_Half(uint16_t h)
 {
@@ -241,6 +293,12 @@ int sithAtmos_Update(const rdVector3* pCamPos, sithAtmosGrid** ppFine, sithAtmos
         strncpy(sithAtmos_worldName, w->map_jkl_fname, sizeof(sithAtmos_worldName));
         sithAtmos_Free();
         sithAtmos_Load(w);
+        char name[64];
+        int i;
+        for (i = 0; i < 63 && w->map_jkl_fname[i] && w->map_jkl_fname[i] != '.'; i++)
+            name[i] = (char)tolower((unsigned char)w->map_jkl_fname[i]);
+        name[i] = 0;
+        sithAtmos_LoadVolumes(name);
     }
     if (!sithAtmos_bLoaded) return 0;
     sithAtmos_Fill(&sithAtmos_aLevels[0], &sithAtmos_aGrids[0], SITHATMOS_FINE_XY, SITHATMOS_FINE_Z, pCamPos);

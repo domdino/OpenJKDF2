@@ -199,6 +199,56 @@ int stdJSON_GetInt(const char* pFpath, const char* pKey, int valDefault)
     return ret.get<int>();
 }
 
+// Added (remaster): read an array of objects of numbers, e.g. fog volumes:
+//   {"volumes": [{"center": [x, y, z], "density": 0.5, ...}, ...]}
+// pSpec lists the fields and how many numbers each holds ("center:3,density:1"); each item's
+// numbers go to pOut in that order, (sum of counts) floats per item. pOut must be filled with
+// defaults first: fields an item doesn't have are left alone. Read-only, plain file path (not
+// the engine's virtual file system). Returns the number of items (0 if the file is missing).
+int stdJSON_ReadObjectArray(const char* pFpath, const char* pArrayKey, const char* pSpec, float* pOut, int maxItems)
+{
+    if (!pFpath || !pArrayKey || !pSpec || !pOut) return 0;
+    std::ifstream f(pFpath);
+    if (!f.good()) return 0;
+    nlohmann::json j = nlohmann::json::parse(f, nullptr, false, true);
+    if (j.is_discarded() || !j.is_object() || !j.contains(pArrayKey) || !j[pArrayKey].is_array()) {
+        stdPlatform_Printf("stdJSON: %s has no \"%s\" array (or isn't valid JSON)\n", pFpath, pArrayKey);
+        return 0;
+    }
+    std::vector<std::pair<std::string, int>> fields;
+    std::string spec(pSpec);
+    size_t pos = 0;
+    int stride = 0;
+    while (pos < spec.size()) {
+        size_t comma = spec.find(',', pos);
+        std::string item = spec.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+        size_t colon = item.find(':');
+        int n = colon == std::string::npos ? 1 : atoi(item.c_str() + colon + 1);
+        fields.push_back({item.substr(0, colon), n});
+        stride += n;
+        if (comma == std::string::npos) break;
+        pos = comma + 1;
+    }
+    int count = 0;
+    for (auto& it : j[pArrayKey]) {
+        if (count >= maxItems) break;
+        if (!it.is_object()) continue;
+        float* dst = pOut + (size_t)count * stride;
+        for (auto& fld : fields) {
+            if (it.contains(fld.first)) {
+                auto& v = it[fld.first];
+                if (v.is_number() && fld.second >= 1) dst[0] = v.get<double>();
+                else if (v.is_array())
+                    for (int k = 0; k < fld.second && k < (int)v.size(); k++)
+                        if (v[k].is_number()) dst[k] = v[k].get<double>();
+            }
+            dst += fld.second;
+        }
+        count++;
+    }
+    return count;
+}
+
 flex_t stdJSON_GetFloat(const char* pFpath, const char* pKey, flex_t valDefault)
 {
     CHECK_COMMON_GET(pFpath, pKey, valDefault);

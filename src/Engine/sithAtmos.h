@@ -32,4 +32,12 @@ int sithAtmos_Update(const rdVector3* pCamPos, sithAtmosGrid** ppFine, sithAtmos
 // (world z) and how fast it thins with height (units). Density 0 = none (indoor levels).
 void sithAtmos_GetHeightFog(float* pDensity, float* pGroundZ, float* pFalloff);
 
+// Hand-placed fog volumes (jkgm/atmos/<level>.json, placed in Blender with
+// tools/blender/atmos_volumes.py): boxes and ellipsoids of extra fog with a tint and soft edges.
+#define SITHATMOS_MAX_SHADER_VOLUMES 16
+// The volumes nearest the camera (up to max), packed for the fog shader, 4 floats each:
+//   center xyz + shape (0 box, 1 ellipsoid); half size xyz + edge softness (0-1);
+//   cos and sin of the rotation about z, density, 0; tint rgb + 0. Returns how many.
+int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize, float* pParams, float* pTint, int max);
+
 #endif // _SITHATMOS_H

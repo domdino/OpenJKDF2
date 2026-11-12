@@ -55,6 +55,8 @@ HDVIDEO="${CAPTURE_HDVIDEO:-$ROOT/hd/video}"
 # HD textures: on unless CAPTURE_HD=0 (for before/after comparisons).
 rm -f "$CAPROOT/jkgm"
 ORIG="${CAPTURE_ORIGINAL:-0}"
+# Fog volumes placed in Blender (atmos/, in the repo) load from jkgm/atmos.
+[ -d "$ROOT/hd/jkgm" ] && [ ! -e "$ROOT/hd/jkgm/atmos" ] && ln -s "$ROOT/atmos" "$ROOT/hd/jkgm/atmos"
 if [ "${CAPTURE_HD:-1}" = "1" ] && [ "$ORIG" != "1" ] && [ -d "$ROOT/hd/jkgm" ]; then
     ln -s "$ROOT/hd/jkgm" "$CAPROOT/jkgm"
 fi

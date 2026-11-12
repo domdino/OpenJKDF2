@@ -21,6 +21,11 @@ uniform vec3 u_WZ;
 uniform vec3 u_camPos;        // camera position in the world
 uniform vec4 u_fog;           // density per unit, light gain, max distance, time (s)
 uniform vec4 u_fog2;          // noise amount, noise scale, light cap, steps
+uniform int u_numVols;        // hand-placed fog volumes (sithAtmos_GetVolumes)
+uniform vec4 u_volCenter[16]; // xyz, shape (0 box, 1 ellipsoid)
+uniform vec4 u_volSize[16];   // half size xyz, edge softness
+uniform vec4 u_volParams[16]; // cos, sin of rotation about z, density
+uniform vec4 u_volTint[16];   // rgb
 uniform vec4 u_hfog;          // height fog: density at the ground, ground height (world z), falloff (units)
 uniform vec2 iResolution;
 uniform float param1;
@@ -76,6 +81,26 @@ vec3 airLightRaw(vec3 P)
     return vec3(0.01);
 }
 
+// Fog volumes at P: total density, and density-weighted tint (in .rgb of tintSum).
+float volumes(vec3 P, inout vec3 tintSum)
+{
+    float dens = 0.0;
+    for (int v = 0; v < 16; v++) {
+        if (v >= u_numVols) break;
+        vec3 q = P - u_volCenter[v].xyz;
+        vec2 cs = u_volParams[v].xy;
+        q.xy = vec2(cs.x * q.x + cs.y * q.y, -cs.y * q.x + cs.x * q.y);
+        vec3 n = abs(q) / u_volSize[v].xyz;
+        float d = u_volCenter[v].w > 0.5 ? length(n) : max(n.x, max(n.y, n.z));
+        if (d >= 1.0) continue;
+        float w = 1.0 - smoothstep(1.0 - u_volSize[v].w, 1.0, d);
+        float dv = u_volParams[v].z * w;
+        dens += dv;
+        tintSum += u_volTint[v].rgb * dv;
+    }
+    return dens;
+}
+
 // Height fog: thick at and below the level's ground height, thinning upwards.
 float heightFog(float z)
 {
@@ -107,9 +132,12 @@ void main(void)
         vec3 P = u_camPos + seg * ((float(i) + jitter) / float(steps));
         float n = noise(P * u_fog2.y + drift) * 0.65 + noise(P * u_fog2.y * 2.7 - drift * 1.7) * 0.35;
         float nf = max(0.0, 1.0 + u_fog2.x * (n * 2.0 - 1.0));
-        float dens = (u_fog.x + heightFog(P.z)) * nf;
+        float plain = u_fog.x + heightFog(P.z);
+        vec3 tintSum = vec3(plain);
+        float dens = (plain + volumes(P, tintSum)) * nf;
+        vec3 albedo = tintSum / max(dens / max(nf, 1e-4), 1e-5);
         float tr = exp(-dens * ds);
-        scat += T * airLight(P) * (1.0 - tr);
+        scat += T * airLight(P) * albedo * (1.0 - tr);
         T *= tr;
     }
     // Past the march: the rest of the way to far surfaces (up to 200 units) with the air at the

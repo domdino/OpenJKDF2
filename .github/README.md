@@ -29,7 +29,7 @@ That breaks down into concrete engine work:
 | Haze and light shafts | Depth-based haze lit by the scene, screen-space light shafts | Done (playtesting) |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
-| Every shot lit like a film: side key light, rim light on every character, nothing flat | Light bake with recovered designer lights; key/rim lighting rig for characters | Planned |
+| Every shot lit like a film: side key light, rim light on every character, nothing flat | Light bake with recovered designer lights; key/rim lighting rig for characters | Characters: first pass done; levels: light bake in progress |
 | Crisp, detailed, grimy surfaces | HD textures with roughness and normal maps | Stage 3 |
 | Detailed characters | New models through a Blender pipeline | Stage 4 |
 
@@ -59,6 +59,7 @@ That breaks down into concrete engine work:
 - [x] Coloured light from sabers, including enemy sabers
 - [x] Haze and light shafts (being playtested)
 - [x] Volumetric cloud sky with moon shafts on the storm levels (Maw, Sarris, the ascent); other skies to follow
+- [x] Cinematic key and rim light on characters and props (first pass)
 - [ ] Light bake: proper level lighting from glowing surfaces and the sky ([plan](../docs/stage2-lightbake-plan.md))
 - [x] One-switch preset: `remaster 1` in the console
 

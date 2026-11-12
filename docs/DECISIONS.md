@@ -556,3 +556,8 @@ Bake controls added: `--bounces` (default 2), `--soft` (light size, default 0.01
 Every scene should be lit like a cinematic Star Wars shot: key light from the side, rim light on every character, never flat. Applies to everything from here on:
 - Levels: the light bake stays dark and contrasty (low fill, real falloff, shadows); pools of light, not wash.
 - Characters and props: a lighting rig in the model shader. Key from the strongest nearby real source (the recovered designer lights and glowing surfaces give positions and colours), a rim light that outlines silhouettes against the background (coloured by what's behind or the nearest light), low fill. Dynamic lights (sabers, blasters) add on top.
+
+**Cinematic light on models, first pass** (`r_cinematicLight`, in the remaster preset; `r_cineKey` 1.2, `r_cineFill` 0.35, `r_cineRim` 1.6). Per vertex in rdModel3 (rdModel3_CinematicLight) using the meshes' smooth normals: the flat ambient becomes a fill, a key light comes from the upper right of the shot (fixed relative to the camera, slightly in front of the subject), and a rim lights surfaces turning away from the camera. Model faces then skip the ambient floor so the shadow side can go dark. Model faces carry a marker bit (0x08000000) through rdCache; rdActive and the double-sided check mask it out.
+- A shader version came first and was dropped: models only have flat face normals on the GPU (derived from screen derivatives), so key and rim showed every triangle.
+- Next: aim the key at the strongest nearby real light (recovered designer lights once the light bake is in the engine) instead of a fixed screen direction, and tint the rim by what's behind.
+- docs/screenshots/stage2-cinematic-light-kyle.jpg

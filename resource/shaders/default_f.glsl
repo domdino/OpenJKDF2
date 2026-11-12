@@ -248,6 +248,10 @@ void saberBladeMain()
 // panorama (sky_f.glsl) by view direction, over a clear-sky gradient with the moon or sun
 // disc, stars, and lightning lighting the clouds from inside. Writes a sky marker
 // (depth -1000) to the reflection target so haze and light shafts can tell sky from wall.
+// Added (remaster): cinematic light on models (characters, weapons, props): the flat ambient
+// becomes a fill, a key comes from the upper side of the shot, a rim outlines the silhouette.
+uniform int u_model;
+uniform vec4 u_cine;           // fill, key, rim, enabled
 uniform int u_sky;
 uniform sampler2D u_skyPano;
 uniform vec3 u_skyWX;          // world axes in camera space
@@ -635,7 +639,9 @@ void main(void)
         ppl_compute(ppl_P, ppl_N, mat_rough, mat_metal, ppl_diff, ppl_spec);
         // Metals have little diffuse; ambient occlusion darkens crevices.
         ppl_diff *= (1.0 - 0.8 * mat_metal);
-        vec3 lit = min(vertex_color.rgb + ppl_diff, vec3(1.0)) * mix(1.0, mat_ao, 0.8);
+        vec3 base = vertex_color.rgb;
+        float litMax = 1.0;
+        vec3 lit = min(base + ppl_diff, vec3(litMax)) * mix(1.0, mat_ao, 0.8);
         main_color.rgb = sampled_color.rgb * lit * albedoFactor_copy.rgb;
 
         // No highlights on see-through or additive faces (sprites, bolts, glass). (Full vertex

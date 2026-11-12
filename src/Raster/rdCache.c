@@ -17,6 +17,8 @@
 #define RD_TRI_FLAG_SABER_RGB  0x40000
 #define RD_PROC_FLAG_SKY 0x10000000u // Added (remaster): volumetric sky surface (sithRender)
 #define RD_TRI_FLAG_SKY 0x100000
+#define RD_PROC_FLAG_MODEL 0x08000000u // Added (remaster): face of a 3D model (rdModel3), cinematic key/rim light
+#define RD_TRI_FLAG_MODEL 0x200000
 
 #ifdef RDCACHE_RENDER_LINES
 static int rdCache_totalLines = 0;
@@ -394,7 +396,7 @@ int rdCache_SendFaceListToHardware()
 
         // Added: We need to know if a face is flex_d_t-sided
         if ((active_6c->type & RD_FF_DOUBLE_SIDED) &&
-            (active_6c->light_flags & ~(RD_PROC_FLAG_SABER_RGB | RD_PROC_FLAG_SABER_BLADE | RD_PROC_FLAG_SKY)))
+            (active_6c->light_flags & ~(RD_PROC_FLAG_SABER_RGB | RD_PROC_FLAG_SABER_BLADE | RD_PROC_FLAG_SKY | RD_PROC_FLAG_MODEL)))
         {
             flags_idk_ |= 0x10000;
         }
@@ -671,6 +673,8 @@ int rdCache_SendFaceListToHardware()
         // UVs are set per vertex below.
         if (active_6c->light_flags & RD_PROC_FLAG_SKY) // Added (remaster): drawn by the volumetric sky shader
             flags_idk_ |= RD_TRI_FLAG_SKY;
+        if (active_6c->light_flags & RD_PROC_FLAG_MODEL) // Added (remaster): cinematic key/rim light
+            flags_idk_ |= RD_TRI_FLAG_MODEL;
         int bSaberBlade = (active_6c->light_flags & RD_PROC_FLAG_SABER_BLADE) != 0;
         if (bSaberBlade) {
             flags_idk_ |= RD_TRI_FLAG_SABER_BLADE | 0x400 | 0x800;

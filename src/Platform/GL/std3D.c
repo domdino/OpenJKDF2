@@ -45,6 +45,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 #define RD_TRI_FLAG_SABER_RGB 0x40000
 #define RD_TRI_FLAG_SABER_BLADE 0x80000 // Added (remaster): procedural lightsaber blade (rdCache)
 #define RD_TRI_FLAG_SKY 0x100000        // Added (remaster): volumetric sky surface (rdCache)
+#define RD_TRI_FLAG_MODEL 0x200000      // Added (remaster): face of a 3D model (cinematic light)
 
 typedef struct std3DSimpleTexStage
 {
@@ -162,6 +163,7 @@ static GLint std3D_skyU_ambTop = -1, std3D_skyU_ambBottom = -1, std3D_skyU_horiz
 static GLint uniform_sky = -1, uniform_skyPano = -1, uniform_skyWX = -1, uniform_skyWY = -1, uniform_skyWZ = -1;
 static GLint uniform_skySunDir = -1, uniform_skySunCol = -1, uniform_skyZenith = -1, uniform_skyHorizon = -1;
 static GLint uniform_skyBelow = -1, uniform_skyFlash = -1;
+static GLint uniform_model = -1, uniform_cine = -1; // Added (remaster): cinematic key/rim light on models
 static float std3D_skyWorldAxes[9]; // world X, Y, Z axes in camera space (last world draw)
 static int std3D_frameNumGlow = 0;
 static float std3D_frameGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], std3D_frameGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
@@ -714,6 +716,8 @@ int init_resources()
 
     uniform_saberBlade = std3D_tryFindUniform(programDefault, "saberBlade");
     uniform_sky = std3D_tryFindUniform(programDefault, "u_sky"); // Added (remaster): volumetric sky
+    uniform_model = std3D_tryFindUniform(programDefault, "u_model");
+    uniform_cine = std3D_tryFindUniform(programDefault, "u_cine");
     uniform_skyPano = std3D_tryFindUniform(programDefault, "u_skyPano");
     uniform_skyWX = std3D_tryFindUniform(programDefault, "u_skyWX");
     uniform_skyWY = std3D_tryFindUniform(programDefault, "u_skyWY");
@@ -3639,6 +3643,8 @@ void std3D_DrawRenderList()
     // Added (remaster): procedural saber blades, and time for their plasma
     glUniform1i(uniform_saberBlade, (last_flags & RD_TRI_FLAG_SABER_BLADE) ? 1 : 0);
     glUniform1i(uniform_sky, (last_flags & RD_TRI_FLAG_SKY) ? 1 : 0); // Added (remaster)
+    glUniform1i(uniform_model, (last_flags & RD_TRI_FLAG_MODEL) ? 1 : 0);
+    glUniform4f(uniform_cine, jkPlayer_cineFill, jkPlayer_cineKey, jkPlayer_cineRim, jkPlayer_bCinematicLight ? 1.0f : 0.0f);
     glUniform1f(uniform_saberStrength, jkPlayer_saberGlowStrength);
     glUniform1f(uniform_time, (float)((double)SDL_GetTicksNS() / 1e9));
 
@@ -3720,6 +3726,8 @@ void std3D_DrawRenderList()
                 glUniform1i(uniform_saberBlade, (tris[j].flags & RD_TRI_FLAG_SABER_BLADE) ? 1 : 0);
             if (changed_flags & RD_TRI_FLAG_SKY) // Added (remaster)
                 glUniform1i(uniform_sky, (tris[j].flags & RD_TRI_FLAG_SKY) ? 1 : 0);
+            if (changed_flags & RD_TRI_FLAG_MODEL) // Added (remaster)
+                glUniform1i(uniform_model, (tris[j].flags & RD_TRI_FLAG_MODEL) ? 1 : 0);
 
             // Added: Switch RGB override when entering or leaving a saber batch.
             if (changed_flags & RD_TRI_FLAG_SABER_RGB)

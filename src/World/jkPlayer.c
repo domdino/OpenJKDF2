@@ -82,6 +82,10 @@ int jkPlayer_anisotropy = 8;                                // Added (remaster):
 flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
 int jkPlayer_bSaberGlow = 1;                                 // Added (remaster): procedural glowing blades
 flex_t jkPlayer_saberGlowSize = 1.0;                        // Added (remaster)
+int jkPlayer_bCinematicLight = 0;                          // Added (remaster): key/rim/fill rig on models
+flex_t jkPlayer_cineKey = 1.2;
+flex_t jkPlayer_cineFill = 0.35;
+flex_t jkPlayer_cineRim = 1.6;
 int jkPlayer_bVolumetricSky = 1;                            // Added (remaster): raymarched cloud sky (sithSky)
 flex_t jkPlayer_skyCoverage = -1.0;                         // Added (remaster): <0 = the level's preset
 flex_t jkPlayer_skySunAzimuth = -999.0;                     // Added (remaster): degrees, <-360 = preset
@@ -251,6 +255,12 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterBool("r_saberTrails",              1,                          &jkPlayer_bSaberTrails,             CVARFLAG_LOCAL);
     // Volumetric cloud sky in place of the 1997 sky textures, on levels with a sky preset
     // (sithSky.c). Needs r_perPixelLighting. Coverage and sun/moon direction can be overridden live.
+    // Characters and props lit like a film: a key light from the upper side of the shot, a rim
+    // light on the silhouette, and the flat ambient turned down to a fill. Needs per-pixel lighting.
+    sithCvar_RegisterBool("r_cinematicLight",           0,                          &jkPlayer_bCinematicLight,          CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineKey",                  1.2,                        &jkPlayer_cineKey,                  CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineFill",                 0.35,                       &jkPlayer_cineFill,                 CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineRim",                  1.6,                        &jkPlayer_cineRim,                  CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_volumetricSky",            1,                          &jkPlayer_bVolumetricSky,           CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skyCoverage",              -1.0,                       &jkPlayer_skyCoverage,              CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skySunAzimuth",            -999.0,                     &jkPlayer_skySunAzimuth,            CVARFLAG_LOCAL);
@@ -316,6 +326,7 @@ static const jkPlayerPresetEntry jkPlayer_aRemasterPreset[] = {
     {"r_gradeExposure",      "1",   "1"},
     {"r_enableBloom",        "1",   "0"},
     {"r_enableSSAO",         "1",   "0"},
+    {"r_cinematicLight",     "1",   "0"},
 };
 
 int jkPlayer_ApplyRemasterPreset(int bOn)
@@ -737,6 +748,7 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
         stdJSON_SaveBool(ext_fpath, "sabertrails", jkPlayer_bSaberTrails);
         stdJSON_SaveBool(ext_fpath, "volumetricsky", jkPlayer_bVolumetricSky);
+        stdJSON_SaveBool(ext_fpath, "cinematiclight", jkPlayer_bCinematicLight);
         stdJSON_SaveBool(ext_fpath, "autorenderscale", jkPlayer_bAutoRenderScale);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
@@ -967,6 +979,7 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_saberGlowStrength = stdJSON_GetFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
         jkPlayer_bSaberTrails = stdJSON_GetBool(ext_fpath, "sabertrails", jkPlayer_bSaberTrails);
         jkPlayer_bVolumetricSky = stdJSON_GetBool(ext_fpath, "volumetricsky", jkPlayer_bVolumetricSky);
+        jkPlayer_bCinematicLight = stdJSON_GetBool(ext_fpath, "cinematiclight", jkPlayer_bCinematicLight);
         jkPlayer_bAutoRenderScale = stdJSON_GetBool(ext_fpath, "autorenderscale", jkPlayer_bAutoRenderScale);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);

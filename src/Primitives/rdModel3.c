@@ -27,6 +27,7 @@
 #include "Engine/rdColormap.h"
 #include "Primitives/rdPrimit3.h"
 #include "Primitives/rdDebug.h"
+void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv); // Added (remaster)
 
 model3Loader_t rdModel3_RegisterLoader(model3Loader_t pfFunc)
 {
@@ -1865,6 +1866,7 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
             pCurMesh->vertices_unk,
             pCurMesh->numVertices,
             rdCamera_g_pCurCamera->attenuationMin);
+        rdModel3_CinematicLight(pCurMesh, &matInv); // Added (remaster)
     }
     else if (rdModel3_lightingMode == RD_LIGHTMODE_6_UNK) // MOTS added
     {
@@ -1914,6 +1916,46 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
 }
 
 // MOTS altered (RGB aLights)
+// Added (remaster): cinematic light on models (r_cinematicLight, needs per-pixel lighting).
+// Per vertex, with the mesh's smooth normals: the flat ambient becomes a fill, a key light
+// comes from the upper right of the shot (fixed relative to the camera, a little in front of
+// the subject), and a rim lights edges turning away from the camera. Model faces then skip
+// the ambient floor (rdModel3_DrawFace), so the shadow side can actually go dark.
+int rdModel3_bCinematicMesh = 0;
+void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv)
+{
+    rdModel3_bCinematicMesh = 0;
+    if (!jkPlayer_bCinematicLight || !jkPlayer_bPerPixelLighting || !pMesh->vertexNormals || !rdCamera_g_pCurCamera)
+        return;
+    const rdMatrix34* cam = &rdCamera_g_camMatrix;
+    rdVector3 keyW, keyL, camL;
+    keyW.x = 0.62f * cam->rvec.x - 0.38f * cam->lvec.x + 0.69f * cam->uvec.x;
+    keyW.y = 0.62f * cam->rvec.y - 0.38f * cam->lvec.y + 0.69f * cam->uvec.y;
+    keyW.z = 0.62f * cam->rvec.z - 0.38f * cam->lvec.z + 0.69f * cam->uvec.z;
+    rdMatrix_TransformVector34(&keyL, &keyW, pMatInv);
+    rdVector_Normalize3Acc(&keyL);
+    rdMatrix_TransformPoint34(&camL, &cam->scale, pMatInv);
+    flex_t amb = rdCamera_g_pCurCamera->ambientLight;
+    flex_t fill = jkPlayer_cineFill, keyS = jkPlayer_cineKey * 1.3f, rimS = jkPlayer_cineRim * 0.8f;
+    for (int i = 0; i < pMesh->numVertices; i++)
+    {
+        const rdVector3* n = &pMesh->vertexNormals[i];
+        rdVector3 v;
+        rdVector_Sub3(&v, &camL, &pMesh->aVertices[i]);
+        rdVector_Normalize3Acc(&v);
+        flex_t base = pMesh->vertices_unk[i] > amb ? pMesh->vertices_unk[i] : amb;
+        flex_t key = rdVector_Dot3(n, &keyL);
+        if (key < 0) key = 0;
+        flex_t ndv = rdVector_Dot3(n, &v);
+        if (ndv < 0) ndv = 0;
+        if (ndv > 1) ndv = 1;
+        flex_t rim = (1 - ndv) * (1 - ndv) * (1 - ndv);
+        flex_t lit = base * (fill + keyS * key) + rimS * rim * (base > 0.25f ? base : 0.25f);
+        pMesh->vertices_unk[i] = lit;
+    }
+    rdModel3_bCinematicMesh = 1;
+}
+
 int rdModel3_DrawFace(rdFace *pFace, int lightFlags)
 {
     rdProcEntry *procEntry;
@@ -2019,6 +2061,8 @@ int rdModel3_DrawFace(rdFace *pFace, int lightFlags)
         procEntry->ambientLight = rdCamera_g_pCurCamera->ambientLight;
     else
         procEntry->ambientLight = 0.0;
+    if (rdModel3_bCinematicMesh && procEntry->lightingMode == RD_LIGHTMODE_GOURAUD)
+        procEntry->ambientLight = 0.0; // Added (remaster): cinematic light already includes the fill
 
     int isIdentityMap = (rdColormap_pCurMap == rdColormap_pIdentityMap);
     procEntry->wallCel = pFace->wallCel;
@@ -2095,7 +2139,7 @@ int rdModel3_DrawFace(rdFace *pFace, int lightFlags)
     if ( procEntry->lightingMode >= 3 )
         flags |= 4u;
 
-    procEntry->light_flags = lightFlags;
+    procEntry->light_flags = lightFlags | 0x08000000u; // Added (remaster): model face (cinematic key/rim light)
     procEntry->type = pFace->type;
     procEntry->extralight = pFace->extraLight;
     procEntry->material = pFace->material;

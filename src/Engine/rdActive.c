@@ -529,7 +529,7 @@ void rdActive_BuildEdges()
             int vWrapped = (vNext >= numVertices) ? 0 : vNext;   // last -> first
 
             int vStart, vEnd;
-            if (pFace->pProcEntry->light_flags == 0)
+            if ((pFace->pProcEntry->light_flags & 0x0FFFFFFFu & ~0x08000000u) == 0) // Added (remaster): ignore the remaster's marker bits
             {
                 vStart = vA;        vEnd = vWrapped;
             }

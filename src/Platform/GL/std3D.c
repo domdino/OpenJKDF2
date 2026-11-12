@@ -133,6 +133,7 @@ GLint attribute_coord3d, attribute_v_color, attribute_v_light, attribute_v_uv, a
 #define STD3D_PPL_MAX_LIGHTS (32)
 GLint attribute_v_invz = -1;
 static GLint uniform_ppl = -1, uniform_pplNumLights = -1, uniform_pplLightPos = -1, uniform_pplLightCol = -1;
+static GLint uniform_fixtureBloom = -1; // Added (remaster)
 static GLint uniform_pplAtten = -1, uniform_pplProj = -1, uniform_pplScreen = -1, uniform_pplSpecular = -1, uniform_pplWetness = -1;
 static GLint uniform_pplNumGlow = -1, uniform_pplGlowPos = -1, uniform_pplGlowCol = -1;
 static GLint uniform_ssrWrite = -1, uniform_pplUpCam = -1;
@@ -150,6 +151,7 @@ static int std3D_ssrHaveCamera = 0;
 std3DSimpleTexStage std3D_hazeStage;
 // Added (remaster): volumetric fog (sithAtmos), lit by the baked light volume.
 std3DSimpleTexStage std3D_fogStage;
+std3DSimpleTexStage std3D_flareStage; // Added (remaster): lens flares
 static GLuint std3D_fogTex[2] = {0, 0};
 static GLint std3D_fogU[16];
 static float std3D_fogCamPos[3];
@@ -672,6 +674,7 @@ int init_resources()
         for (int k = 0; k < 14; k++) std3D_fogU[k] = std3D_tryFindUniform(std3D_fogStage.program, names[k]);
     }
     else std3D_fogStage.program = 0;
+    if (!std3D_loadSimpleTexProgram("shaders/flare", &std3D_flareStage)) std3D_flareStage.program = 0; // Added (remaster)
     if (!std3D_loadSimpleTexProgram("shaders/shafts", &std3D_shaftStage)) return false;
     std3D_shaftUniformNum = std3D_tryFindUniform(std3D_shaftStage.program, "u_numShafts");
     std3D_shaftUniformPos = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftPos");
@@ -703,6 +706,7 @@ int init_resources()
     uniform_pplProj = std3D_tryFindUniform(programDefault, "u_pplProj");
     uniform_pplScreen = std3D_tryFindUniform(programDefault, "u_pplScreen");
     uniform_pplSpecular = std3D_tryFindUniform(programDefault, "u_pplSpecular");
+    uniform_fixtureBloom = std3D_tryFindUniform(programDefault, "u_fixtureBloom");
     uniform_pplWetness = std3D_tryFindUniform(programDefault, "u_pplWetness");
     uniform_pplNumGlow = std3D_tryFindUniform(programDefault, "u_pplNumGlow");
     uniform_pplGlowPos = std3D_tryFindUniform(programDefault, "u_pplGlowPos");
@@ -3433,6 +3437,15 @@ void std3D_DrawSceneFbo()
         std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur2.tex, 0, 0, 1.0, bloom_intensity * 1.0, jkPlayer_gamma, 0);
         std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur3.tex, 0, 0, 1.0, bloom_intensity * 1.0, jkPlayer_gamma, 0);
         std3D_DrawSimpleTex(&std3D_texFboStage, pOut, std3D_pFb->blur4.tex, 0, 0, 1.0, bloom_intensity * 0.8, jkPlayer_gamma, 0);
+
+        // Added (remaster): lens flares (streak, ghosts, halo) from the bloom source.
+        if (jkPlayer_bLensFlares && std3D_flareStage.program && !jkGuiBuildMulti_bRendering)
+        {
+            glBlendFunc(GL_ONE, GL_ONE);
+            std3D_DrawSimpleTex(&std3D_flareStage, pOut, std3D_pFb->blur1.tex, 0, 0, jkPlayer_flareStrength,
+                                (float)std3D_pFb->w / (float)(std3D_pFb->h ? std3D_pFb->h : 1), 0.0, 0);
+            glBlendFunc(GL_SRC_ALPHA, GL_SRC_ALPHA);
+        }
     }
     // Added (remaster): grade the composited scene onto the window.
     if (draw_grade)
@@ -3723,6 +3736,7 @@ void std3D_DrawRenderList()
                         rdCamera_g_pCurCamera->focalLength, 0.0f);
             glUniform4f(uniform_pplScreen, internalWidth, internalHeight, width, height);
             glUniform1f(uniform_pplSpecular, jkPlayer_specular);
+            glUniform1f(uniform_fixtureBloom, jkPlayer_enableBloom ? jkPlayer_fixtureBloom : 0.0f); // Added (remaster)
 
             // Added (remaster): world up in camera space (floors reflect most), and the values
             // the reflection pass needs later in the frame.

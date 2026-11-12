@@ -129,6 +129,10 @@ Six levels, 1997 vs remaster:
 
 ![The 1997 game vs the remaster](../docs/screenshots/stage2-1997-vs-remaster.jpg)
 
+**Bloom and lens flares:** bright light fixtures (skylights, lamps, light panels) bloom, and everything bright throws a film-style anamorphic streak and lens ghosts:
+
+![Bloom and lens flare, 1997 vs remaster](../docs/screenshots/stage2-bloom-flares.jpg)
+
 **Skies:** a volumetric cloud sky on the storm levels and presets for the rest (Nar Shaddaa smog, Sulon overcast, day and sunset skies):
 
 ![Skies, 1997 vs remaster](../docs/screenshots/stage2-volumetric-sky.jpg)

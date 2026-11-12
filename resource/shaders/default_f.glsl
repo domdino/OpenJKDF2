@@ -87,6 +87,7 @@ uniform vec4 u_pplProj;                 // half screen width, half screen height
 uniform vec4 u_pplScreen;               // canvas width, canvas height, framebuffer width, height
 uniform float u_pplSpecular;            // overall highlight strength
 uniform float u_pplWetness;             // 0 = matte, 1 = soaked
+uniform float u_fixtureBloom;           // Added (remaster): bright light fixtures feed bloom (r_fixtureBloom)
 uniform int u_pplNumGlow;               // glow lights: static lights at glowing surfaces
 uniform vec4 u_pplGlowPos[24];          // camera space xyz, w = radius
 uniform vec4 u_pplGlowCol[24];          // rgb colour, w = intensity
@@ -820,6 +821,13 @@ if (saberRgbEnabled != 0)
 }
 
 finalEmiss.rgb += ppl_spec * 0.5; // Added (remaster): wet glints feed the bloom
+// Added (remaster): light fixtures (skylights, lamps, light panels) are near-white textures lit to
+// full brightness; they feed bloom and lens flares like glowing texels do.
+if (u_fixtureBloom > 0.0 && f_lmSurf > 0.5 && orig_alpha > 0.99 && blend_mode != D3DBLEND_SRCALPHA && blend_mode != D3DBLEND_INVSRCALPHA) // level faces only (not characters)
+{
+    float srcL = luminance(sampled_color.rgb), outL = luminance(main_color.rgb);
+    finalEmiss.rgb += main_color.rgb * smoothstep(0.8, 0.95, srcL) * smoothstep(0.85, 1.1, outL) * u_fixtureBloom;
+}
 
     // Added (remaster): reflection data
     fragColorSSR = vec4(0.0);

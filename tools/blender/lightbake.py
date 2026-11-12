@@ -184,7 +184,39 @@ def build(d, folder, sky_rgb, glow_strength):
             nt.links.new(shader, mix.inputs[2])
             nt.links.new(mix.outputs[0], out.inputs[0])
         obj.data.materials.append(m)
+    add_rubble(folder)
     return obj
+
+
+def add_rubble(folder):
+    """Rocks along the creases (tools/lightbake/terrain_skin.py) as their own object: they shade
+    and shadow the light map but aren't baked into it (tools/blender/rubble_bake.py bakes their
+    own light into their corners). --no-skin leaves them out too."""
+    rp = os.path.join(folder, "rubble.npz")
+    if not os.path.exists(rp) or "--no-skin" in sys.argv:
+        return None
+    import numpy as np
+    z = np.load(rp)
+    P, T = z["pos"], z["tris"]
+    me = bpy.data.meshes.new("rubble")
+    me.vertices.add(len(P))
+    me.vertices.foreach_set("co", P.astype(np.float32).ravel())
+    me.loops.add(len(T) * 3)
+    me.loops.foreach_set("vertex_index", T.astype(np.int32).ravel())
+    me.polygons.add(len(T))
+    me.polygons.foreach_set("loop_start", np.arange(0, len(T) * 3, 3, dtype=np.int32))
+    me.polygons.foreach_set("use_smooth", np.ones(len(T), dtype=bool))
+    me.update()
+    m = bpy.data.materials.new("rubble")
+    m.use_nodes = True
+    m.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.3, 0.2, 0.15, 1)
+    m.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 1.0
+    me.materials.append(m)
+    ob = bpy.data.objects.new("rubble", me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.select_set(False)
+    log("terrain skin: rubble, %d triangles" % len(T))
+    return ob
 
 
 def add_glow_cards(d, folder, strength, offset):

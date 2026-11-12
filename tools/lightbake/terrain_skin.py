@@ -278,6 +278,145 @@ def displace(P, T, wall, floor, sky=None):
     return P + N * D[:, None], D, border
 
 
+# ---- rubble -------------------------------------------------------------------------------------
+
+def icosphere(subdiv=1):
+    t = (1 + 5 ** 0.5) / 2
+    V = [(-1, t, 0), (1, t, 0), (-1, -t, 0), (1, -t, 0), (0, -1, t), (0, 1, t), (0, -1, -t), (0, 1, -t),
+         (t, 0, -1), (t, 0, 1), (-t, 0, -1), (-t, 0, 1)]
+    F = [(0, 11, 5), (0, 5, 1), (0, 1, 7), (0, 7, 10), (0, 10, 11), (1, 5, 9), (5, 11, 4), (11, 10, 2),
+         (10, 7, 6), (7, 1, 8), (3, 9, 4), (3, 4, 2), (3, 2, 6), (3, 6, 8), (3, 8, 9), (4, 9, 5),
+         (2, 4, 11), (6, 2, 10), (8, 6, 7), (9, 8, 1)]
+    V = [np.array(v, float) / np.linalg.norm(v) for v in V]
+    if not subdiv:
+        return np.array(V), np.array(F)
+    mid = {}
+
+    def m(a, b):
+        k = (min(a, b), max(a, b))
+        if k not in mid:
+            c = V[a] + V[b]
+            mid[k] = len(V)
+            V.append(c / np.linalg.norm(c))
+        return mid[k]
+    F2 = []
+    for a, b, c in F:
+        ab, bc, ca = m(a, b), m(b, c), m(c, a)
+        F2 += [(a, ab, ca), (b, bc, ab), (c, ca, bc), (ab, bc, ca)]
+    return np.array(V), np.array(F2)
+
+
+def uv_scale(d, s):
+    """Texture repeats per world unit along the surface (from its own texture mapping)."""
+    V = np.array(d["verts"], float)[s["v"]]
+    UV = np.array(s["uv"], float)
+    X, *_ = np.linalg.lstsq(V - V[0], UV - UV[0], rcond=None)
+    return float(np.linalg.norm(X, axis=0).mean())
+
+
+def floor_creases(d, P0, T0, S0):
+    """Concave edges where an organic floor (normal up) meets an organic wall, from the terrain
+    triangles before subdivision (T-junctions already split, so partly shared edges count)."""
+    byidx = {s["index"]: s for s in d["surfaces"]}
+    edges = {}
+    for t, si in zip(T0, S0):
+        for k in range(3):
+            a, b = int(t[k]), int(t[(k + 1) % 3])
+            edges.setdefault((min(a, b), max(a, b)), set()).add(int(si))
+    out = []
+    for (ia, ib), ss in edges.items():
+        if len(ss) != 2:
+            continue
+        A, B = (byidx[x] for x in ss)
+        nA = np.array(A["normal"]) / np.linalg.norm(A["normal"])
+        nB = np.array(B["normal"]) / np.linalg.norm(B["normal"])
+        a, b = P0[ia], P0[ib]
+        cB = np.array(d["verts"])[B["v"]].mean(0)
+        if np.dot(cB - a, nA) <= 1e-3:
+            continue                                     # convex: an outside edge, nothing collects
+        (fs, fn), (ws, wn) = ((A, nA), (B, nB)) if nA[2] > nB[2] else ((B, nB), (A, nA))
+        if fn[2] > 0.6 and wn[2] < 0.5:
+            out.append((a, b, fs, fn, ws, wn))
+    return out
+
+
+def rubble(d, creases, P, Pd, density, dmin, dmax, max_rocks, seed=7):
+    """Rocks along every organic floor-wall crease: clustered, mostly small (--rock-min, a tennis
+    ball and up, 10 cm), a few big (--rock-max, 45 cm), big ones tucked against the wall, small ones
+    scattered out, each a random lumpy shape with a couple of flat broken faces. They sit on the
+    skin (P -> Pd), take the wall's texture and are drawn with the wall."""
+    from scipy.spatial import cKDTree
+    rng = np.random.default_rng(seed)
+    shapes = (icosphere(0), icosphere(1))   # 20 triangles for the small ones, 80 for the big
+    tree = cKDTree(P)
+    rocks = []
+    step = 0.005
+    for a, b, fs, fn, ws, wn in creases:
+        L = float(np.linalg.norm(b - a))
+        t = (b - a) / max(L, 1e-9)
+        o = wn - np.dot(wn, fn) * fn                     # along the floor, away from the wall
+        o /= np.linalg.norm(o) + 1e-12
+        xs = np.arange(step * 0.5, L, step)
+        if not len(xs):
+            continue
+        Q = a[None] + xs[:, None] * t[None]
+        c = np.clip((value_noise(Q * 3.0, 91) - 0.35) / 0.35, 0, 1) ** 1.5 * 2.5   # clusters and gaps
+        hit = rng.random(len(xs)) < density * step * c
+        for q in Q[hit]:
+            dia = dmin * (dmax / dmin) ** (rng.random() ** 1.3)
+            r = dia / 2
+            dist = r * 0.7 + rng.exponential(0.006 * (dmin / dia) ** 0.5 + 0.002)
+            rocks.append((q + o * dist + t * rng.normal(0, 0.004), r, fn, ws))
+    if len(rocks) > max_rocks:
+        keep = rng.choice(len(rocks), max_rocks, replace=False)
+        rocks = [rocks[i] for i in sorted(keep)]
+
+    pos, tris, uvs, surf = [], [], [], []
+    scale_cache = {}
+    for base, r, fn, ws in rocks:
+        _, i = tree.query(base)
+        base = base + (Pd[i] - P[i])                     # onto the skin
+        IV, IF = shapes[r > 0.01]
+        v = IV.copy()
+        v *= (1 + 0.45 * (value_noise(v * 1.7 + rng.random(3) * 50, 5) - 0.5))[:, None]
+        v *= np.array([1.0, rng.uniform(0.65, 1.0), rng.uniform(0.6, 0.9)])
+        for _ in range(2):                               # broken faces
+            pl = rng.normal(size=3)
+            pl /= np.linalg.norm(pl)
+            cut = rng.uniform(0.5, 0.8)
+            v -= np.maximum(v @ pl - cut, 0)[:, None] * pl[None]
+        yaw, tilt = rng.uniform(0, 2 * np.pi), rng.normal(0, 0.25)
+        cy, sy, ct, st = np.cos(yaw), np.sin(yaw), np.cos(tilt), np.sin(tilt)
+        R = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]]) @ np.array([[1, 0, 0], [0, ct, -st], [0, st, ct]])
+        v = v @ R.T * r
+        # floor frame: z along the floor normal; sit about a third buried
+        ex = np.cross(fn, [0.0, 1.0, 0.0] if abs(fn[1]) < 0.9 else [1.0, 0.0, 0.0])
+        ex /= np.linalg.norm(ex)
+        ey = np.cross(fn, ex)
+        zmin = v[:, 2].min()
+        W = base[None] + v[:, :1] * ex + v[:, 1:2] * ey + (v[:, 2:3] - zmin - 0.25 * (v[:, 2].max() - zmin)) * fn
+        k = ws["index"]
+        if k not in scale_cache:
+            scale_cache[k] = uv_scale(d, ws)
+        sc = scale_cache[k]
+        off = rng.random(2)
+        b0 = sum(len(p) for p in pos)
+        pos.append(W)
+        tri = IF + b0
+        tris.append(tri)
+        for f in IF:
+            A, B, C = W[f]
+            n = np.abs(np.cross(B - A, C - A))
+            ax2 = int(np.argmax(n))
+            ij = [x for x in range(3) if x != ax2]
+            uvs.append(W[f][:, ij] * sc + off)
+        surf += [k] * len(IF)
+    if not rocks:
+        return None
+    return (np.concatenate(pos).astype(np.float32), np.concatenate(tris).astype(np.int32),
+            np.array(uvs, np.float32), np.array(surf, np.int32), len(rocks), len(creases))
+
+
 def main():
     level = sys.argv[1].replace(".jkl", "")
     folder = os.path.join(ROOT, "hd", "lightbake", level)
@@ -293,12 +432,22 @@ def main():
     edge = arg("--edge", max(0.06, float(np.sqrt(area / (budget * 0.14)))))
     log("%s: %d terrain faces, %d triangles, %.0f sq units; splitting to edges under %.3f" % (
         level, len(surfs), len(T), area, edge))
+    creases = floor_creases(d, P, T, S)
     P, T, UV, S = subdivide(P, T, UV, S, edge)
     Pd, D, border = displace(P, T, (arg("--wall-in", 0.10), arg("--wall-out", 0.025)),
                              (arg("--floor-in", 0.006), arg("--floor-out", 0.002)), sky_segments(d))
     log("%d vertices, %d triangles; relief %.3f to %.3f (mean %.3f); %d pinned" % (
         len(P), len(T), float(D.min()), float(D.max()), float(D.mean()), int(border.sum())))
 
+    rb = rubble(d, creases, P, Pd, arg("--rocks", 45.0), arg("--rock-min", 0.010), arg("--rock-max", 0.045),
+                arg("--rocks-max", 30000, int))
+    rpath = os.path.join(folder, "rubble.npz")
+    if rb:
+        rP, rT, rUV, rS, nrocks, ncre = rb
+        np.savez_compressed(rpath, pos=rP, tris=rT, uv=rUV, surf=rS)
+        log("rubble: %d rocks along %d floor creases, %d triangles" % (nrocks, ncre, len(rT)))
+    elif os.path.exists(rpath):
+        os.remove(rpath)
     np.savez_compressed(os.path.join(folder, "skin.npz"), pos=Pd.astype(np.float32), tris=T.astype(np.int32),
                         uv=UV.astype(np.float32), surf=S.astype(np.int32), edge=edge)
     out = os.path.join(ROOT, "hd", "jkgm", "lightmaps", level + ".jkls")

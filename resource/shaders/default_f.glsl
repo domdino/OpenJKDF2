@@ -630,6 +630,12 @@ void main(void)
     // The 1997 light times fill is a floor, not an addition: it keeps places the bake missed
     // from going black without flattening the lit areas.
     if (lm_has) vertex_color.rgb = max(lm_light, vertex_color.rgb * u_lmParams.x);
+    // Added (remaster): crease rubble carries its own baked light (light-map units) per corner.
+    if (u_worldSpace == 2) {
+        lm_light = min(f_color.rgb * u_lmParams.y, vec3(u_lmParams.z));
+        lm_has = u_ppl != 0;
+        vertex_color = vec4(lm_light, 1.0);
+    }
     float index = sampled.r;
     vec4 palval = texture(worldPalette, vec2(index, 0.5));
     vec4 color_add = vec4(0.0, 0.0, 0.0, 1.0);

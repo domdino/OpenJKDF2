@@ -203,6 +203,9 @@ static int std3D_skinNum = 0;               // world surfaces in the tables belo
 static uint32_t* std3D_skinFirst = NULL;    // per world surface: first skin vertex
 static uint32_t* std3D_skinCount = NULL;    // per world surface: skin vertices (0 = none)
 static int* std3D_skinVisIdx = NULL;        // per world surface: its place in this draw + 1
+static GLuint std3D_rockVbo = 0;            // crease rubble (<level>.jklr): x y z u v r g b
+static uint32_t* std3D_rockFirst = NULL;
+static uint32_t* std3D_rockCount = NULL;
 static std3D_SkinVisRec std3D_skinVis[STD3D_SKIN_MAX_VIS];
 static GLint uniform_worldSpace = -1, uniform_skinCam = -1, uniform_skinFar = -1;
 static float std3D_skyWorldAxes[9]; // world X, Y, Z axes in camera space (last world draw)
@@ -1299,36 +1302,38 @@ static void std3D_SkinFree(void)
     std3D_skinFirst = std3D_skinCount = NULL;
     std3D_skinVisIdx = NULL;
     std3D_skinNum = 0;
+    if (std3D_rockVbo) glDeleteBuffers(1, &std3D_rockVbo);
+    std3D_rockVbo = 0;
+    free(std3D_rockFirst);
+    free(std3D_rockCount);
+    std3D_rockFirst = std3D_rockCount = NULL;
 }
 
-static void std3D_SkinLoad(SithWorld* w)
+// Read a skin-style sidecar (header, then per surface: surface, triangles, 3 x nf floats per
+// triangle) into a GL buffer and per-surface first/count tables. Returns the vertex count.
+static size_t std3D_SkinReadFile(SithWorld* w, const char* name, const char* ext, const char* magicWant, int nf,
+                                 GLuint* pVbo, uint32_t** ppFirst, uint32_t** ppCount)
 {
-    char name[64], path[128];
-    int i;
-    for (i = 0; i < 63 && w->map_jkl_fname[i] && w->map_jkl_fname[i] != '.'; i++)
-        name[i] = (char)tolower((unsigned char)w->map_jkl_fname[i]);
-    name[i] = 0;
-    snprintf(path, sizeof(path), "jkgm/lightmaps/%s.jkls", name);
+    char path[128];
+    snprintf(path, sizeof(path), "jkgm/lightmaps/%s.%s", name, ext);
     FILE* f = fopen(path, "rb");
-    if (!f) return;
+    if (!f) return 0;
     char magic[4];
     uint32_t hdr[3];
-    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "JKLS", 4) || fread(hdr, 4, 3, f) != 3 || hdr[0] != 1
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, magicWant, 4) || fread(hdr, 4, 3, f) != 3 || hdr[0] != 1
         || (int)hdr[1] != w->numVertices) {
-        stdPlatform_Printf("skin: %s is not a version 1 skin for this level, ignored\n", path);
+        stdPlatform_Printf("skin: %s is not a version 1 file for this level, ignored\n", path);
         fclose(f);
-        return;
+        return 0;
     }
     fseek(f, 0, SEEK_END);
     long size = ftell(f) - 16;
     fseek(f, 16, SEEK_SET);
     uint8_t* raw = (uint8_t*)malloc(size > 0 ? (size_t)size : 1);
     float* verts = (float*)malloc(size > 0 ? (size_t)size : 1);
-    std3D_skinFirst = (uint32_t*)calloc(w->numSurfaces, sizeof(uint32_t));
-    std3D_skinCount = (uint32_t*)calloc(w->numSurfaces, sizeof(uint32_t));
-    std3D_skinVisIdx = (int*)calloc(w->numSurfaces, sizeof(int));
-    int ok = raw && verts && std3D_skinFirst && std3D_skinCount && std3D_skinVisIdx && size > 0
-             && fread(raw, 1, (size_t)size, f) == (size_t)size;
+    uint32_t* first = (uint32_t*)calloc(w->numSurfaces, sizeof(uint32_t));
+    uint32_t* count = (uint32_t*)calloc(w->numSurfaces, sizeof(uint32_t));
+    int ok = raw && verts && first && count && size > 0 && fread(raw, 1, (size_t)size, f) == (size_t)size;
     fclose(f);
     size_t pos = 0, nv = 0;
     for (uint32_t k = 0; ok && k < hdr[2]; k++) {
@@ -1336,28 +1341,46 @@ static void std3D_SkinLoad(SithWorld* w)
         if (pos + 8 > (size_t)size) { ok = 0; break; }
         memcpy(rec, raw + pos, 8);
         pos += 8;
-        size_t bytes = (size_t)rec[1] * 3 * 5 * sizeof(float);
+        size_t bytes = (size_t)rec[1] * 3 * nf * sizeof(float);
         if (rec[0] >= (uint32_t)w->numSurfaces || pos + bytes > (size_t)size) { ok = 0; break; }
-        memcpy(verts + nv * 5, raw + pos, bytes);
+        memcpy(verts + nv * nf, raw + pos, bytes);
         pos += bytes;
-        std3D_skinFirst[rec[0]] = (uint32_t)nv;
-        std3D_skinCount[rec[0]] = rec[1] * 3;
+        first[rec[0]] = (uint32_t)nv;
+        count[rec[0]] = rec[1] * 3;
         nv += (size_t)rec[1] * 3;
     }
     free(raw);
     if (!ok || !nv) {
         stdPlatform_Printf("skin: %s is truncated, ignored\n", path);
         free(verts);
-        std3D_SkinFree();
-        return;
+        free(first);
+        free(count);
+        return 0;
     }
-    std3D_skinNum = w->numSurfaces;
-    glGenBuffers(1, &std3D_skinVbo);
-    glBindBuffer(GL_ARRAY_BUFFER, std3D_skinVbo);
-    glBufferData(GL_ARRAY_BUFFER, nv * 5 * sizeof(float), verts, GL_STATIC_DRAW);
+    glGenBuffers(1, pVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, *pVbo);
+    glBufferData(GL_ARRAY_BUFFER, nv * nf * sizeof(float), verts, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, world_vbo_all);
     free(verts);
+    *ppFirst = first;
+    *ppCount = count;
     stdPlatform_Printf("skin: %s, %u surfaces, %zu triangles\n", path, hdr[2], nv / 3);
+    return nv;
+}
+
+static void std3D_SkinLoad(SithWorld* w)
+{
+    char name[64];
+    int i;
+    for (i = 0; i < 63 && w->map_jkl_fname[i] && w->map_jkl_fname[i] != '.'; i++)
+        name[i] = (char)tolower((unsigned char)w->map_jkl_fname[i]);
+    name[i] = 0;
+    if (!std3D_SkinReadFile(w, name, "jkls", "JKLS", 5, &std3D_skinVbo, &std3D_skinFirst, &std3D_skinCount))
+        return;
+    std3D_skinVisIdx = (int*)calloc(w->numSurfaces, sizeof(int));
+    std3D_skinNum = std3D_skinVisIdx ? w->numSurfaces : 0;
+    // Rubble along the creases, drawn with the wall it lies against (light baked per corner).
+    std3D_SkinReadFile(w, name, "jklr", "JKLR", 8, &std3D_rockVbo, &std3D_rockFirst, &std3D_rockCount);
 }
 
 void std3D_DoTex(rdDDrawSurface* tex, rdTri* tri, int tris_left);
@@ -1440,13 +1463,34 @@ static void std3D_SkinDraw(D3DVERTEX* vertexes, rdTri* tris, int numTris)
         glVertexAttrib1f(attribute_v_light, r->light * inv);
         if (attribute_v_lmSurf >= 0) glVertexAttrib1f(attribute_v_lmSurf, (float)(r->surf + 1));
         glDrawArrays(GL_TRIANGLES, (GLint)std3D_skinFirst[r->surf], (GLsizei)std3D_skinCount[r->surf]);
-        std3D_skinVisIdx[r->surf] = 0;
     }
+
+    // Rubble: its own baked light per corner (u_worldSpace 2), no light-map lookup.
+    if (std3D_rockVbo) {
+        glUniform1i(uniform_worldSpace, 2);
+        glBindBuffer(GL_ARRAY_BUFFER, std3D_rockVbo);
+        glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (GLvoid*)0);
+        glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (GLvoid*)(3 * sizeof(float)));
+        glVertexAttribPointer(attribute_v_color, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (GLvoid*)(5 * sizeof(float)));
+        glEnableVertexAttribArray(attribute_v_color);
+        if (attribute_v_lmSurf >= 0) glVertexAttrib1f(attribute_v_lmSurf, 0.0f);
+        for (int k = 0; k < numVis; k++) {
+            std3D_SkinVisRec* r = &std3D_skinVis[k];
+            if (!std3D_rockCount[r->surf]) continue;
+            float inv = r->n ? 1.0f / r->n : 1.0f;
+            std3D_DoTex(r->tri.texture, &r->tri, 1);
+            glVertexAttrib1f(attribute_v_light, r->light * inv);
+            glDrawArrays(GL_TRIANGLES, (GLint)std3D_rockFirst[r->surf], (GLsizei)std3D_rockCount[r->surf]);
+        }
+    }
+    for (int k = 0; k < numVis; k++)
+        std3D_skinVisIdx[std3D_skinVis[k].surf] = 0;
 
     glUniform1i(uniform_worldSpace, 0);
     glBindBuffer(GL_ARRAY_BUFFER, world_vbo_all);
     glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, x));
     glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, tu));
+    glVertexAttribPointer(attribute_v_color, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, color));
     glEnableVertexAttribArray(attribute_v_color);
     glEnableVertexAttribArray(attribute_v_light);
     if (attribute_v_invz >= 0) glEnableVertexAttribArray(attribute_v_invz);

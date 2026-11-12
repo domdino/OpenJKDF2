@@ -48,7 +48,7 @@ void main(void)
         f_coord = coord3d;
         f_invz = v_invz;
     }
-    f_color = v_color.bgra;
+    f_color = (u_worldSpace == 2) ? vec4(v_color.rgb, 1.0) : v_color.bgra; // rubble: baked light, as is
     f_uv = v_uv;
     f_light = v_light;
     f_lmSurf = v_lmSurf;

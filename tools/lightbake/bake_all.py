@@ -68,7 +68,7 @@ def run(cmd, tag):
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     out = (p.stdout or "") + (p.stderr or "")
     keep = [l for l in out.splitlines() if any(k in l for k in
-            ("light map:", "terrain skin", "fit:", "VIS: done", "calibration", "final bake", "sun from", "SIDECAR", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
+            ("light map:", "terrain skin", "fit:", "VIS: done", "calibration", "final bake", "sun from", "SIDECAR", "RUBBLE", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
     for l in keep:
         log("  " + l.strip())
     if p.returncode != 0 or "FAILED" in out:
@@ -140,6 +140,8 @@ def main():
         if not run(blender("tools/blender/lightmap_sidecar.py", folder), "sidecar"):
             continue
         if not run(blender("tools/blender/probe_bake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "probes"):
+            continue
+        if not run(blender("tools/blender/rubble_bake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "rubble"):
             continue
         if not run(["python3", "-I", "tools/lightbake/volume_points.py", level], "volume points"):
             continue

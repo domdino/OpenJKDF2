@@ -26,9 +26,10 @@ That breaks down into concrete engine work:
 |---|---|---|
 | Lights that pool on surfaces and glint off wet metal | Per-pixel lighting with specular highlights | Done (playtesting) |
 | Wet floors reflecting light strips, sky and objects | Screen-space reflections | Done (playtesting) |
-| Haze and light shafts | Depth-based haze lit by the scene, screen-space light shafts | Done (playtesting) |
+| Haze and light shafts | Depth-based haze lit by the scene, screen-space light shafts | Done (playtesting); volumetric fog, smoke and steam [planned](../docs/stage2-atmosphere-plan.md) |
 | Filmic colour | Colour grading pass with live-reloading .cube LUTs from Resolve | Done |
 | Glowing lights and sabers that roll off softly | Bloom (built in) into a half-float buffer with highlight roll-off | Done |
+| Every shot lit like a film: side key light, rim light on every character, nothing flat | Light bake with recovered designer lights (Blender Cycles); light probes so characters take the baked light's colour and direction, plus key, rim and floor light | Light maps baking for all 25 levels; light probes in game (playtesting) |
 | Crisp, detailed, grimy surfaces | HD textures with roughness and normal maps | Stage 3 |
 | Detailed characters | New models through a Blender pipeline | Stage 4 |
 
@@ -57,6 +58,12 @@ That breaks down into concrete engine work:
 - [x] Screen-space reflections for wet, reflective floors (being playtested)
 - [x] Coloured light from sabers, including enemy sabers
 - [x] Haze and light shafts (being playtested)
+- [x] Volumetric cloud sky with moon shafts on the storm levels (Maw, Sarris, the ascent); other skies to follow
+- [x] Cinematic key and rim light on characters and props (first pass)
+- [x] Light bake in game: baked light maps replace the 1997 corner light on six test levels (`r_lightmaps`, in the remaster preset) ([plan](../docs/stage2-lightbake-plan.md))
+- [x] Light probes: characters and props lit by the bake around them (colour, direction, floor light)
+- [ ] Light bake: tune and bake every level (sun for day levels)
+- [ ] Atmosphere: volumetric fog lit by the bake, height fog, smoke and steam ([plan](../docs/stage2-atmosphere-plan.md))
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist
@@ -69,7 +76,8 @@ That breaks down into concrete engine work:
 - [x] Performance: full remaster + HD runs at 156 fps on the MacBook's native screen; a 7680x3240 ultrawide gets automatic render scaling (52 -> 77 fps). The earlier slowdowns were Topaz and Texture God sharing the GPU
 - [x] Material maps in the engine: roughness, metalness, AO and normal maps per texture (rock defaults to matte)
 - [x] Importer for Texture God output (my own AI upscaling and PBR pipeline)
-- [ ] First full Texture God batch in game
+- [x] First full Texture God batch in game (217 level textures, gritty look, own pack)
+- [x] Texture God on every level, including per-level palette variants (507 textures in game)
 - [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
 - [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
 
@@ -85,7 +93,7 @@ That breaks down into concrete engine work:
 - [x] The cast from Jedi Academy: officers, commandos, Grans, Rodians, Trandoshans, Ugnaughts (18 JK models)
 - [x] Animation check: crouch, fire, jump, punch and saber swing drive the new Kyle cleanly
 - [ ] Named characters (Jerec and the Dark Jedi, Jan) and civilians
-- [ ] Material pass on the converted characters (Texture God)
+- [ ] Material pass on the converted characters (Texture God) - Kyle done (roughness/AO/normal maps)
 - [ ] New Kyle, built in the original's 16 rigid parts so every existing animation still drives him
 - [ ] New stormtrooper
 - [x] New lightsaber: Kyle's hilt from Jedi Outcast in third person, first person and the pickups
@@ -93,6 +101,7 @@ That breaks down into concrete engine work:
 - [x] Glowing plasma blades: white-hot core, coloured sheath and halo, animated, lighting the room (`r_saberGlow`)
 - [x] Lightsaber swing trails (only on real swings)
 - [x] First-person hands: Kyle's gloves and sleeves on every weapon view
+- [x] First-person hands v2: bare hands (free PSX arms pack), rounded sleeves, Texture God jacket
 
 ### Stage 5 checklist
 
@@ -103,6 +112,32 @@ That breaks down into concrete engine work:
 - [ ] Playtest every cutscene in game
 
 ## Latest
+
+Work in progress lives on feature branches until it's been playtested; the newest items below are on [`stage2-light-probes`](https://github.com/domdino/OpenJKDF2/tree/stage2-light-probes).
+
+**Baked lighting.** Every level's lighting is being re-baked in Blender's Cycles path tracer: the level designers' lights (recovered from the 1997 lighting), every glowing strip and lamp as a real light, and sky light through openings, with shadows and bounce light. The result is a light map the engine uses in place of the 1997 corner light, plus light probes that light characters and props by what's around them. Kyle walking over the hangar's red floor strips now catches their red as a hot edge on his legs, with a rim from the white lights ahead. (Known: the shuttle's lit face blows out; models aren't part of the bake yet.)
+
+![Hangar: 1997 corner light vs light maps and light probes](../docs/screenshots/stage2-baked-light-hangar.jpg)
+
+Tuning the character light against a paint-over reference (floor light strength, then the back-light rim):
+
+![Floor light on Kyle](../docs/screenshots/stage2-light-probes-floor-light.jpg)
+
+![Back-light rim](../docs/screenshots/stage2-light-probes-rim.jpg)
+
+The first light maps in game on six test levels (top 1997, bottom baked):
+
+![Light maps in game](../docs/screenshots/stage2-lightmaps-in-game.jpg)
+
+**Volumetric cloud sky** on the storm levels, and sky presets for the rest (Nar Shaddaa smog, Sulon overcast, day and sunset skies):
+
+![Volumetric sky](../docs/screenshots/stage2-volumetric-sky.jpg)
+
+**Texture God on every level:** my own AI upscaling and PBR pipeline now covers every level texture, including per-level palette variants (507 textures in game):
+
+![Texture God palette variants](../docs/screenshots/stage3-texturegod-palette-variants.jpg)
+
+Next up: [atmosphere](../docs/stage2-atmosphere-plan.md), real volumetric fog lit by the baked light (glowing red over the hangar strips, dark between), height fog in pits and canyons, and hand-placed fog and smoke to hide rough terrain.
 
 All 25 cutscenes now play upscaled in game (Topaz, 1920x900), and first-person view shows Kyle's own gloves and sleeves:
 

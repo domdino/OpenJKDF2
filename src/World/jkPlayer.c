@@ -83,9 +83,9 @@ flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
 int jkPlayer_bSaberGlow = 1;                                 // Added (remaster): procedural glowing blades
 flex_t jkPlayer_saberGlowSize = 1.0;                        // Added (remaster)
 int jkPlayer_bCinematicLight = 0;                          // Added (remaster): key/rim/fill rig on models
-flex_t jkPlayer_cineKey = 1.2;
-flex_t jkPlayer_cineFill = 0.35;
-flex_t jkPlayer_cineRim = 1.6;
+flex_t jkPlayer_cineKey = 1.0;
+flex_t jkPlayer_cineFill = 0.45;
+flex_t jkPlayer_cineRim = 2.0;
 flex_t jkPlayer_cineFloorRim = 3.0;                       // Added (remaster): floor-lit rim on models' lower edges
 flex_t jkPlayer_cineGlow = 0.6;                            // Added (remaster): overbright model light added as glow
 flex_t jkPlayer_cineSat = 1.0;                             // Added (remaster): share of the probe colour in a model's fill and key
@@ -267,9 +267,9 @@ void jkPlayer_StartupVars()
     // Characters and props lit like a film: a key light from the upper side of the shot, a rim
     // light on the silhouette, and the flat ambient turned down to a fill. Needs per-pixel lighting.
     sithCvar_RegisterBool("r_cinematicLight",           0,                          &jkPlayer_bCinematicLight,          CVARFLAG_LOCAL);
-    sithCvar_RegisterFlex("r_cineKey",                  1.2,                        &jkPlayer_cineKey,                  CVARFLAG_LOCAL);
-    sithCvar_RegisterFlex("r_cineFill",                 0.35,                       &jkPlayer_cineFill,                 CVARFLAG_LOCAL);
-    sithCvar_RegisterFlex("r_cineRim",                  1.6,                        &jkPlayer_cineRim,                  CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineKey",                  1.0,                        &jkPlayer_cineKey,                  CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineFill",                 0.45,                       &jkPlayer_cineFill,                 CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_cineRim",                  2.0,                        &jkPlayer_cineRim,                  CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_volumetricSky",            1,                          &jkPlayer_bVolumetricSky,           CVARFLAG_LOCAL);
     // Baked light maps (light bake, tools/blender/lightmap_sidecar.py) in place of the 1997
     // corner light on level faces, where a level has one. Fill adds back that much of the 1997

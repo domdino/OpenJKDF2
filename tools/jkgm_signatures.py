@@ -107,7 +107,9 @@ def main():
                 # Palette doesn't apply; the engine hashes the raw 16-bit pixels.
                 sigs = {hashlib.md5(struct.pack("<II", w, h) + raw).hexdigest()}
             else:
-                hd = thumb_rgba(Image.open(hd_path).convert("RGBA"))
+                # An importer can point at the untouched extracted original ("palette_ref"), so
+                # stylised looks that shift colour still find their palette.
+                hd = thumb_rgba(Image.open(e.get("palette_ref") or hd_path).convert("RGBA"))
                 idx = np.frombuffer(raw, dtype=np.uint8)
                 scored = []
                 for pname, pal in palettes.items():
@@ -126,6 +128,7 @@ def main():
                 sigs = {engine_hash(w, h, raw, palettes[pn], alpha & 1) for pn in good}
             e = dict(e)
             e.pop("replaces", None)
+            e.pop("palette_ref", None)
             e["replaces_signatures"] = sorted(sigs)
             n_hashes += len(sigs)
             kept.append(e)

@@ -73,7 +73,7 @@ That breaks down into concrete engine work:
 - [x] Performance: full remaster + HD runs at 156 fps on the MacBook's native screen; a 7680x3240 ultrawide gets automatic render scaling (52 -> 77 fps). The earlier slowdowns were Topaz and Texture God sharing the GPU
 - [x] Material maps in the engine: roughness, metalness, AO and normal maps per texture (rock defaults to matte)
 - [x] Importer for Texture God output (my own AI upscaling and PBR pipeline)
-- [ ] First full Texture God batch in game
+- [x] First full Texture God batch in game (217 level textures, gritty look, own pack)
 - [ ] Roughness and normal maps for the wet, grimy look (loader support plus generation)
 - [ ] Upscale and hand-finish key textures (hangar, Nar Shaddaa, Kyle)
 

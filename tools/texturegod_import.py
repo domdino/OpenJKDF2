@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a Texture God output folder into an HD material pack the game loads.
 
-  tools/texturegod_import.py "/path/to/TEXTURE GOD/out/<run>" [--pack texturegod] [--all]
+  tools/texturegod_import.py "/path/to/TEXTURE GOD/out/<run>" [--pack texturegod] [--all] [--source DIR]
 
 Reads <run>/manifest.json (keyed by the extracted file name, "<mat>.cel<N>.png") and writes
 hd/jkgm/materials/<pack>/ with metadata.json and, per texture, the albedo, ORM
@@ -31,6 +31,8 @@ def main():
     ap.add_argument("--pack", default="texturegod")
     ap.add_argument("--out", default=os.path.join(ROOT, "hd", "jkgm", "materials"))
     ap.add_argument("--all", action="store_true", help="import textures that failed QC too")
+    ap.add_argument("--source", help="folder of the extracted originals the run was made from; palettes are "
+                    "then matched against these instead of the HD albedo (needed for looks that shift colour)")
     args = ap.parse_args()
 
     manifest = json.load(open(os.path.join(args.run, "manifest.json")))
@@ -57,6 +59,8 @@ def main():
             if fn and os.path.isfile(os.path.join(args.run, fn)):
                 shutil.copyfile(os.path.join(args.run, fn), os.path.join(pdir, fn))
                 entry[field] = fn
+        if args.source and os.path.isfile(os.path.join(args.source, src_name)):
+            entry["palette_ref"] = os.path.abspath(os.path.join(args.source, src_name))
         if "emissive_map" in entry:
             entry["emissive_factor"] = [1.0, 1.0, 1.0]
         materials.append(entry)

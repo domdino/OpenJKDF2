@@ -47,7 +47,6 @@ def main():
     img.pixels.foreach_get(px)
     rgb = np.clip(px.reshape(H, W, 4)[:, :, :3], 0.0, 60000.0).astype(np.float16)
 
-    dens = d["density"]
     n = max(s["index"] for s in d["surfaces"]) + 1
     rec = np.zeros((n, 12), dtype=np.float32)
     baked = 0
@@ -56,6 +55,7 @@ def main():
         if not lm:
             continue
         o, u, v = np.array(lm["origin"]), np.array(lm["u"]), np.array(lm["v"])
+        dens = lm.get("d", d["density"])   # per surface (huge faces are coarser)
         rec[s["index"], 0:3] = u * dens / W
         rec[s["index"], 3] = (lm["x"] - o @ u * dens) / W
         rec[s["index"], 4:7] = v * dens / H

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export a Jedi Knight level for light baking (step 1 of docs/stage2-lightbake-plan.md).
 
-    python3 tools/lightbake/jkl_export.py 12escape [--density 32]
+    python3 tools/lightbake/jkl_export.py 12escape [--density 32 | --density auto]
 
 Reads the level straight from the game's GOBs (never modifies them) and writes
 hd/lightbake/<level>/ (gitignored, game data):
@@ -14,7 +14,8 @@ hd/lightbake/<level>/ (gitignored, game data):
 
 Light map layout: each JK surface is flat, so its light map coordinates are a projection
 onto its own plane (u along its first edge, v across), scaled to `density` texels per JK
-unit (Kyle is 0.18 units tall), packed into one atlas with padding.
+unit (Kyle is 0.18 units tall), packed into one atlas with padding. `--density auto` takes
+the highest of 48, 40, 32, 24, 16, 12, 8, 6, 4 whose atlas fits 4096x8192.
 """
 import json
 import os
@@ -35,6 +36,9 @@ GOBS = [os.path.join(GAME, "Resource", "Res2.gob"), os.path.join(GAME, "Resource
 SURF_HORIZON_SKY, SURF_CEILING_SKY = 0x200, 0x400
 PAD = 2
 ATLAS_W = 4096
+MAX_ATLAS_H = 8192
+MAX_RECT = 1000.0
+AUTO_DENSITIES = (48.0, 40.0, 32.0, 24.0, 16.0, 12.0, 8.0, 6.0, 4.0)
 
 
 def gob_index():
@@ -155,7 +159,8 @@ def surface_frame(P):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     level = args[0].replace(".jkl", "")
-    density = float(sys.argv[sys.argv.index("--density") + 1]) if "--density" in sys.argv else 32.0
+    dens_arg = sys.argv[sys.argv.index("--density") + 1] if "--density" in sys.argv else "32"
+    densities = AUTO_DENSITIES if dens_arg == "auto" else (float(dens_arg),)
     out = os.path.join(ROOT, "hd", "lightbake", level)
     os.makedirs(os.path.join(out, "tex"), exist_ok=True)
     os.makedirs(os.path.join(out, "glow"), exist_ok=True)
@@ -197,44 +202,58 @@ def main():
                 info["glowFraction"] = float(mask.mean())
         mats[mi] = info
 
-    # Surfaces that are drawn (geo > 0), with a light map rectangle each.
-    V = np.array(jkl["verts"])
-    surfaces, rects = [], []
-    for si, s in enumerate(jkl["surfaces"]):
-        if s["geo"] == 0 or s["mat"] < 0 or s["mat"] not in mats:
-            continue
-        P = V[s["v"]]
-        n, u, v, area = surface_frame(P)
-        info = mats[s["mat"]]
-        uv = [[jkl["tverts"][t][0] / info["w"], jkl["tverts"][t][1] / info["h"]] if t >= 0 else [0, 0] for t in s["tv"]]
-        sky = bool(s["flags"] & (SURF_HORIZON_SKY | SURF_CEILING_SKY))
-        rec = {"index": si, "mat": info["file"], "flags": s["flags"], "faceflags": s["faceflags"],
-               "alpha": info["alpha"], "geo": s["geo"], "light": s["light"],
-               "extralight": s["extralight"], "v": s["v"], "uv": uv, "intensities": s["intensities"],
-               "normal": n.tolist(), "sky": sky}
-        if not sky:
-            pu, pv = (P - P[0]) @ u, (P - P[0]) @ v
-            w = max(2, int(np.ceil((pu.max() - pu.min()) * density)) + 1)
-            h = max(2, int(np.ceil((pv.max() - pv.min()) * density)) + 1)
-            rec["lm"] = {"u": u.tolist(), "v": v.tolist(), "origin": (P[0] + u * pu.min() + v * pv.min()).tolist(),
-                         "w": w, "h": h}
-            rects.append(rec)
-        surfaces.append(rec)
+    for density in densities:
+        # Surfaces that are drawn (geo > 0), with a light map rectangle each.
+        V = np.array(jkl["verts"])
+        surfaces, rects = [], []
+        for si, s in enumerate(jkl["surfaces"]):
+            if s["geo"] == 0 or s["mat"] < 0 or s["mat"] not in mats:
+                continue
+            P = V[s["v"]]
+            n, u, v, area = surface_frame(P)
+            info = mats[s["mat"]]
+            uv = [[jkl["tverts"][t][0] / info["w"], jkl["tverts"][t][1] / info["h"]] if t >= 0 else [0, 0] for t in s["tv"]]
+            sky = bool(s["flags"] & (SURF_HORIZON_SKY | SURF_CEILING_SKY))
+            rec = {"index": si, "mat": info["file"], "flags": s["flags"], "faceflags": s["faceflags"],
+                   "alpha": info["alpha"], "geo": s["geo"], "light": s["light"],
+                   "extralight": s["extralight"], "v": s["v"], "uv": uv, "intensities": s["intensities"],
+                   "normal": n.tolist(), "sky": sky}
+            if not sky:
+                pu, pv = (P - P[0]) @ u, (P - P[0]) @ v
+                # Huge faces (terrain, sky-scale walls) get coarser texels so one of them
+                # doesn't force the whole level down: at most MAX_RECT texels across.
+                ext = max(pu.max() - pu.min(), pv.max() - pv.min(), 1e-6)
+                sd = min(density, MAX_RECT / ext)
+                w = max(2, int(np.ceil((pu.max() - pu.min()) * sd)) + 1)
+                h = max(2, int(np.ceil((pv.max() - pv.min()) * sd)) + 1)
+                rec["lm"] = {"u": u.tolist(), "v": v.tolist(), "origin": (P[0] + u * pu.min() + v * pv.min()).tolist(),
+                             "w": w, "h": h, "d": sd}
+                rects.append(rec)
+            surfaces.append(rec)
 
-    # Shelf packing, tallest first.
-    rects.sort(key=lambda r: -r["lm"]["h"])
-    x = y = shelf = 0
-    for r in rects:
-        w, h = r["lm"]["w"] + PAD * 2, r["lm"]["h"] + PAD * 2
-        if w > ATLAS_W:
-            raise RuntimeError("surface %d too large for the atlas at this density" % r["index"])
-        if x + w > ATLAS_W:
-            x, y, shelf = 0, y + shelf, 0
-        r["lm"]["x"], r["lm"]["y"] = x + PAD, y + PAD
-        x += w
-        shelf = max(shelf, h)
-    atlas_h = y + shelf
-    atlas_h = 1 << int(np.ceil(np.log2(max(atlas_h, 1))))
+        # Shelf packing, tallest first.
+        rects.sort(key=lambda r: -r["lm"]["h"])
+        x = y = shelf = 0
+        too_wide = False
+        for r in rects:
+            w, h = r["lm"]["w"] + PAD * 2, r["lm"]["h"] + PAD * 2
+            if w > ATLAS_W:
+                too_wide = True
+                break
+            if x + w > ATLAS_W:
+                x, y, shelf = 0, y + shelf, 0
+            r["lm"]["x"], r["lm"]["y"] = x + PAD, y + PAD
+            x += w
+            shelf = max(shelf, h)
+        atlas_h = y + shelf
+        atlas_h = 1 << int(np.ceil(np.log2(max(atlas_h, 1))))
+        if too_wide:
+            if density == densities[-1]:
+                raise RuntimeError("surface %d too large for the atlas at this density" % r["index"])
+            atlas_h = 1 << 30
+        if atlas_h <= MAX_ATLAS_H or density == densities[-1]:
+            break
+        print("  density %g needs a %d px tall atlas, trying lower" % (density, atlas_h))
     texels = sum(r["lm"]["w"] * r["lm"]["h"] for r in rects)
     print("light map: %d surfaces, %.1f M texels, atlas %dx%d (%.0f%% used) at %g texels/unit" % (
         len(rects), texels / 1e6, ATLAS_W, atlas_h, 100.0 * texels / (ATLAS_W * atlas_h), density))

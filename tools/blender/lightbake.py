@@ -65,7 +65,7 @@ def build(d, folder, sky_rgb, glow_strength):
         if "lm" in s:
             lm = s["lm"]
             o, ua, va = Vector(lm["origin"]), Vector(lm["u"]), Vector(lm["v"])
-            dens = d["density"]
+            dens = lm.get("d", d["density"])   # per surface (huge faces are coarser)
             for p in P:
                 q = Vector(p) - o
                 uv_lm.append(((lm["x"] + q.dot(ua) * dens) / W, (lm["y"] + q.dot(va) * dens) / H))
@@ -319,8 +319,8 @@ def corner_samples(d):
         cx, cy = lm["x"] + lm["w"] / 2.0, lm["y"] + lm["h"] / 2.0
         for vi in s["v"]:
             q = V[vi] - o
-            x = lm["x"] + q @ u * d["density"]
-            y = lm["y"] + q @ v * d["density"]
+            x = lm["x"] + q @ u * lm.get("d", d["density"])
+            y = lm["y"] + q @ v * lm.get("d", d["density"])
             # one texel in from the corner, towards the rectangle's centre
             x += 1.0 if x < cx else -1.0
             y += 1.0 if y < cy else -1.0

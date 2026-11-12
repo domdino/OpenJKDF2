@@ -42,6 +42,54 @@ static const sithSkyPreset sithSky_aPresets[] = {
         {0.14f, 0.08f, 0.05f},
         1.5f,
     },
+    // Sulon, Katarn's farm: a heavy grey overcast of dark cumulus, sun hidden.
+    {
+        "sulon_overcast", {"03sky09k", "03SKY01K", NULL},
+        120.0f, 35.0f,
+        {1.0f, 0.97f, 0.92f}, 0.8f, 0.0f,
+        {0.30f, 0.33f, 0.38f}, {0.50f, 0.52f, 0.56f},
+        {0.62f, 0.65f, 0.72f}, {0.18f, 0.19f, 0.22f},
+        0.85f, 6.0f, 1.0f, 3.6f, 0.02f,
+        0.0f, 0.0f,
+        {0.34f, 0.35f, 0.39f},
+        0.85f,
+    },
+    // Day with broken cumulus (the escape house, the cargo ship, the tower).
+    {
+        "day_broken", {"04sky01", "10sky2", "14sky", NULL},
+        60.0f, 40.0f,
+        {1.0f, 0.96f, 0.88f}, 1.5f, 0.6f,
+        {0.16f, 0.30f, 0.60f}, {0.55f, 0.66f, 0.82f},
+        {0.55f, 0.62f, 0.78f}, {0.24f, 0.25f, 0.29f},
+        0.45f, 7.0f, 1.2f, 3.2f, 0.02f,
+        0.0f, 0.0f,
+        {0.50f, 0.55f, 0.62f},
+        0.7f,
+    },
+    // Clear day, a few fair-weather clouds (Baron's Hed, the fuel station).
+    {
+        "day_clear", {"06sky01", "06sky02", "09skyB", NULL},
+        150.0f, 55.0f,
+        {1.0f, 0.97f, 0.90f}, 1.6f, 0.6f,
+        {0.10f, 0.26f, 0.62f}, {0.50f, 0.64f, 0.85f},
+        {0.55f, 0.63f, 0.80f}, {0.28f, 0.29f, 0.33f},
+        0.30f, 7.0f, 1.3f, 2.8f, 0.02f,
+        0.0f, 0.0f,
+        {0.48f, 0.55f, 0.65f},
+        0.7f,
+    },
+    // Sunset: towering pink and purple cumulus lit low from the side (the hangar's ceiling).
+    {
+        "sunset", {"12sky3", NULL},
+        250.0f, 4.0f,
+        {1.0f, 0.55f, 0.35f}, 1.7f, 1.2f,
+        {0.16f, 0.09f, 0.24f}, {0.62f, 0.32f, 0.34f},
+        {0.42f, 0.28f, 0.45f}, {0.22f, 0.11f, 0.15f},
+        0.55f, 6.0f, 1.4f, 4.6f, 0.02f,
+        0.05f, 0.0f,
+        {0.30f, 0.15f, 0.20f},
+        0.8f,
+    },
 };
 
 static SithWorld* sithSky_pWorld = NULL;

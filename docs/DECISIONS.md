@@ -563,3 +563,7 @@ Every scene should be lit like a cinematic Star Wars shot: key light from the si
 - docs/screenshots/stage2-cinematic-light-kyle.jpg
 
 **Nar Shaddaa sky tuned** (first look from under the big open sky at 11.4, -0.2): the first preset gave a dense daytime-looking starfield with small white puffs. Now a low, thin smog layer (0.8-1.7 km, coverage 0.62, density 2.5) lit orange from below by the city, a dim low moon, few faint stars, brown smog at the horizon. docs/screenshots/stage2-sky-narshadda.jpg. Captures can look at the sky with CAPTURE_WARP="11.4 -0.2 5.0 30 0 0".
+
+**More sky presets** (matched by sky material): `sulon_overcast` (03sky09k: heavy grey storm cumulus), `day_broken` (04sky01, 10sky2, 14sky), `day_clear` (06sky01/02, 09skyB), `sunset` (12sky3, the hangar's ceiling: towering pink cumulus lit low from the side). Bright skies needed half the sun and ~0.7 exposure: the storm-tuned glow and bloom blow them to white otherwise. Checked from cameras placed under each level's biggest sky surface: fuel station, hangar ceiling and Sulon look right (docs/screenshots/stage2-sky-presets.jpg).
+- Known: some levels paint sky textures on ordinary faces as well as sky faces (Baron's Hed's view showed the old texture with the feature on; a block of the escape house's view too). Those faces aren't replaced yet; next step is to treat faces using a preset's sky material as sky too.
+- Cargo and tower cameras landed inside walls, so those two are unchecked.

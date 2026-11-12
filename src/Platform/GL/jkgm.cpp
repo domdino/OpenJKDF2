@@ -664,7 +664,13 @@ void jkgm_populate_shortcuts(tVBuffer *vbuf, rdDDrawSurface *texture, rdMaterial
         return;
     }
 
-    texture->cache_entry = &jkgm_cache[cache_key];
+    // Added (remaster): a texture matched by its hash (every Texture God and palette-variant
+    // entry) must use that entry. jkgm_cache[cache_key] made a new, empty one under the file
+    // name, so nothing from hash-matched entries applied (colour, maps, displacement).
+    if (jkgm_cache.find(cache_key) != jkgm_cache.end())
+        texture->cache_entry = &jkgm_cache[cache_key];
+    else
+        texture->cache_entry = &jkgm_cache_hash[hash];
 
     rdTexture *pRdTexture = &material->textures[cel];
     //pRdTexture->has_jkgm_override = 1;

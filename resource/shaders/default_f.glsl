@@ -552,9 +552,48 @@ void main(void)
     vec3 ppl_spec = vec3(0.0);
     if (dot(ppl_N, -ppl_P) < 0.0) ppl_N = -ppl_N;
 
+    // Added (remaster): parallax occlusion from the HD pack's height map (displacement_map:
+    // white = high, Texture God's 16-bit heights), stepped through in a tangent frame built from
+    // screen derivatives like the normal map's. Shifts every texture lookup below (colour,
+    // material, normals), and fades out with distance. displacement_factor = depth in UV units.
+    vec2 uvp = f_uv;
+    vec2 duvx = dFdx(f_uv), duvy = dFdy(f_uv);
+    if (displacement_factor > 0.0 && u_ppl != 0 && f_invz > 0.0)
+    {
+        vec3 dp1 = dFdx(ppl_P), dp2 = dFdy(ppl_P);
+        vec3 dp2perp = cross(dp2, ppl_N), dp1perp = cross(ppl_N, dp1);
+        vec3 T = dp2perp * duvx.x + dp1perp * duvy.x;
+        vec3 B = dp2perp * duvx.y + dp1perp * duvy.y;
+        float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
+        T *= invmax; B *= invmax;
+        vec3 V = normalize(-ppl_P);
+        vec3 Vt = vec3(dot(V, T), dot(V, B), dot(V, ppl_N));
+        float fade = 1.0 - smoothstep(2.0, 5.0, ppl_P.y);   // view depth in units
+        if (fade > 0.0 && Vt.z > 0.05)
+        {
+            float steps = mix(24.0, 8.0, Vt.z);
+            vec2 shift = Vt.xy / max(Vt.z, 0.2) * displacement_factor * fade / steps;
+            float layer = 1.0 / steps, depth = 0.0;
+            float h = 1.0 - textureGrad(displacement_map, uvp, duvx, duvy).r;
+            vec2 prev = uvp;
+            float prevH = h, prevD = 0.0;
+            for (int i = 0; i < 24; i++)
+            {
+                if (depth >= h || float(i) >= steps) break;
+                prev = uvp; prevH = h; prevD = depth;
+                uvp -= shift;
+                depth += layer;
+                h = 1.0 - textureGrad(displacement_map, uvp, duvx, duvy).r;
+            }
+            // Refine between the last two steps.
+            float a0 = prevH - prevD, a1 = h - depth;
+            uvp = mix(prev, uvp, clamp(a0 / max(a0 - a1, 1e-4), 0.0, 1.0));
+        }
+    }
+
     // Added (remaster): material. Without an ORM map, surfaces default to fairly rough,
     // non-metal and unoccluded, so rock and plaster don't read as polished.
-    vec4 mat_orm = (u_hasOrm != 0) ? texture(texOrm, f_uv) : vec4(1.0, 0.75, 0.0, 1.0);
+    vec4 mat_orm = (u_hasOrm != 0) ? texture(texOrm, uvp) : vec4(1.0, 0.75, 0.0, 1.0);
     float mat_ao = mat_orm.r;
     float mat_metal = mat_orm.b;
     // r_wetness makes the whole world somewhat smoother (wet), on top of the material.
@@ -563,7 +602,7 @@ void main(void)
     // of position and UV (no tangents in the vertex data).
     if (u_hasNormal != 0)
     {
-        vec3 tn = texture(texNormal, f_uv).xyz * 2.0 - 1.0;
+        vec3 tn = texture(texNormal, uvp).xyz * 2.0 - 1.0;
         vec3 dp1 = dFdx(ppl_P), dp2 = dFdy(ppl_P);
         vec2 duv1 = dFdx(f_uv), duv2 = dFdy(f_uv);
         vec3 dp2perp = cross(dp2, ppl_N), dp1perp = cross(ppl_N, dp1);
@@ -573,10 +612,7 @@ void main(void)
         ppl_N = normalize(mat3(T * invmax, B * invmax, ppl_N) * tn);
     }
 
-    vec2 adj_texcoords = f_uv;
-    if(displacement_factor != 0.0) {
-        adj_texcoords = parallax_mapping(f_uv, face_normals_parallax, adjusted_coords_parallax);
-    }
+    vec2 adj_texcoords = uvp;   // Added (remaster): parallax above (the old screen-space version is unused)
 
     vec4 sampled = texture(tex, adj_texcoords);
     vec4 sampledEmiss = texture(texEmiss, adj_texcoords);

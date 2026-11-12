@@ -1,6 +1,6 @@
 # Terrain plan: more polygons for rock, cliffs and canyons
 
-Status: options for Dom (2026-11-12). Nothing built yet.
+Status: Dom chose parallax, then the skin (2026-11-12). Parallax is in (with a loader fix that finally shows the Texture God textures); the skin and rubble are next.
 
 ## What the terrain is
 
@@ -33,6 +33,9 @@ Photoscanned cliff and rock kits (Quixel Megascans on Fab, Sketchfab, KitBash3D 
 - Best possible look where it matters: the Maw, the tower's base, the Barons Hed canyon.
 - Hand work per spot, and the props need lighting: they'd be lit by the light probes, or baked into the light bake if we include them in the Blender scene.
 - Engine work: static props from a per-level file (we already draw 3do models; high-poly ones need the larger mesh limits we raised for the cast).
+
+### Rubble along creases (Dom's idea)
+No hard straight edges where a rock wall meets the floor: a tool finds every concave crease between two organic surfaces (rock, cliff, dirt, sand, grass; never metal, panels or architecture) and scatters rubble along it, mostly small, a few bigger, half-buried and tucked against the wall, textured with that wall's rock and baked with everything else. It shares the skin's extra-geometry sidecar. Visual only (no collision), so kept low and tight to the wall.
 
 ## Recommendation
 

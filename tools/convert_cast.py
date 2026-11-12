@@ -48,8 +48,8 @@ CAST = {
     # A 5th field sizes the character from a standing JK model (the lying one is only as tall as
     # it is thick).
     # A 6th field: extra arguments for the converter (the drunk lies flatter than his 1997 pose).
-    "thout":  ("trandoshan", "default", "Passed-out Trandoshan", "thout", "th", ["--flatten", "0.25", "--squash", "0.6"]),
-    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout", "th", ["--flatten", "0.25", "--squash", "0.6"]),
+    "thout":  ("trandoshan", "default", "Passed-out Trandoshan", "thout", "th", ["--natural-lying"]),
+    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout", "th", ["--natural-lying"]),
 }
 
 

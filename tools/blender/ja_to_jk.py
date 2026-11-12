@@ -142,6 +142,86 @@ def log(*a):
     print("JA2JK:", *a, flush=True)
 
 
+# --natural-lying: a passed-out pose authored here instead of copied from the JK model's joints.
+# Copying a crude 1997 pose joint for joint onto a detailed character twists it (the bar drunk).
+# Limb directions are in the standing frame (facing +Y, up +Z, right +X); the body is then laid on
+# its back (forward turns to up) and placed where the JK model lies, back on the table.
+NATURAL_LYING = [
+    # Upper arms flopped out flat, forearms hanging over the table's edge (standing -Y turns to
+    # down once he's laid on his back).
+    ("lhumerus", "lradius", (-0.90, 0.00, -0.42)),
+    ("lradius", "lhand", (-0.35, -0.85, -0.25)),
+    ("rhumerus", "rradius", (0.85, 0.05, -0.50)),
+    ("rradius", "rhand", (0.30, -0.75, -0.55)),
+    # Thighs flat and a little apart, calves dangling off the end of the table.
+    ("lfemurYZ", "ltibia", (-0.12, 0.00, -1.0)),
+    ("ltibia", "ltalus", (-0.05, -0.85, -0.50)),
+    ("rfemurYZ", "rtibia", (0.15, 0.10, -1.0)),
+    ("rtibia", "rtalus", (0.10, -0.80, -0.60)),
+]
+
+
+def natural_lying(arm, rest, jk, roles, joint):
+    import numpy as np
+    A = arm.matrix_world
+    Ainv = A.inverted()
+    for pb in arm.pose.bones:
+        pb.matrix_basis = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    W = lambda b: A @ arm.pose.bones[b].head
+    for bone, child, d in NATURAL_LYING:
+        if bone not in arm.pose.bones or child not in arm.pose.bones:
+            continue
+        pb = arm.pose.bones[bone]
+        cur = (W(child) - W(bone)).normalized()
+        R = cur.rotation_difference(Vector(d).normalized()).to_matrix().to_4x4()
+        h = W(bone)
+        pb.matrix = Ainv @ Matrix.Translation(h) @ R @ Matrix.Translation(-h) @ A @ pb.matrix
+        bpy.context.view_layer.update()
+    if "cranium" in arm.pose.bones:   # head lolled to one side and a little back
+        pb = arm.pose.bones["cranium"]
+        h = W("cranium")
+        R = (Matrix.Rotation(math.radians(35), 4, "Z") @ Matrix.Rotation(math.radians(-12), 4, "X"))
+        pb.matrix = Ainv @ Matrix.Translation(h) @ R @ Matrix.Translation(-h) @ A @ pb.matrix
+        bpy.context.view_layer.update()
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # Lay him on his back: forward (+Y) turns to up, head (+Z) to -Y; then turn him to lie the way
+    # the JK model does (hips to head), hips over the JK hips, back on the table.
+    pelvis = W("pelvis")
+    jk_dir = Vector((joint["head"] - joint["hip"]).to_2d()).normalized()
+    yaw = math.atan2(jk_dir.y, jk_dir.x) - math.atan2(-1.0, 0.0)
+    T = Matrix.Rotation(yaw, 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X") @ Matrix.Translation(-pelvis)
+    tops = [o for o in bpy.data.objects if o.parent is None]
+    for o in tops:
+        o.matrix_world = T @ o.matrix_world
+    bpy.context.view_layer.update()
+    # The table: the lowest point of the JK model's torso and hips.
+    zs = []
+    for k, me in enumerate(jk.geosets[0]):
+        ns = [i for i, nd in enumerate(jk.nodes) if nd.mesh == k and nd.name.lower() in ("torso", "hips")]
+        if ns:
+            zs += [(rest[ns[0]] @ [v[0], v[1], v[2], 1])[2] for v in me.verts]
+    table = min(zs) if zs else joint["hip"].z
+    dg = bpy.context.evaluated_depsgraph_get()
+    back = []
+    for o in visible_lod0():
+        oe = o.evaluated_get(dg)
+        me = oe.to_mesh()
+        for v in me.vertices:
+            p = oe.matrix_world @ v.co
+            if p.to_2d().length < 0.05:   # under the torso and hips, not the limbs
+                back.append(p.z)
+        oe.to_mesh_clear()
+    lift = table - (min(back) if back else 0.0)
+    T2 = Matrix.Translation((joint["hip"].x, joint["hip"].y, lift))
+    for o in tops:
+        o.matrix_world = T2 @ o.matrix_world
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="POSE")
+    log("natural lying pose: back on the table at z %.3f, turned %.0f degrees" % (table, math.degrees(yaw)))
+
+
 def visible_lod0():
     root0 = bpy.data.objects.get("model_root_0")
     return [o for o in root0.children_recursive
@@ -405,6 +485,9 @@ def main():
         log("head turned %.1f degrees back to face forward" % math.degrees((before.transposed() @ rest_rot).to_quaternion().angle))
     errs = {b: ((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]).length for b, n, _ in snap if b in arm.pose.bones}
     log("max joint error after snapping: %.6f" % max(errs.values()), {b: round(e, 5) for b, e in errs.items() if e > 1e-4})
+
+    if "--natural-lying" in argv:
+        natural_lying(arm, rest, jk, roles, joint)
 
     bpy.ops.object.mode_set(mode="OBJECT")
 

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "jk.h"
 #include "World/sithWorld.h"
@@ -194,6 +195,38 @@ static void sithAtmos_Fill(const sithAtmosLevel* L, sithAtmosGrid* G, int dxy, i
         }
     }
     G->dirty = 1;
+}
+
+// Height fog per level (ground = the level's low floors, from tools: area-weighted floor heights).
+// Outdoor levels only: it sits in pits, canyons and city depths and hides the far terrain.
+typedef struct sithAtmosHeightFog { const char* level; float density, groundZ, falloff; } sithAtmosHeightFog;
+static const sithAtmosHeightFog sithAtmos_aHeightFog[] = {
+    {"01narshadda",   0.25f, -11.2f, 3.0f},   // the city's depths
+    {"02narshadda",   0.25f,  -9.7f, 3.0f},
+    {"04escapehouse", 0.20f, -15.4f, 2.5f},   // the ravine below the house
+    {"06abarons",     0.20f,  -0.7f, 0.8f},   // mist on the water
+    {"06bbarons",     0.20f,   2.1f, 2.0f},
+    {"09fuelstation", 0.30f, -20.8f, 4.0f},   // the canyon floor
+    {"10cargo",       0.10f,  -4.7f, 1.5f},
+    {"14tower",       0.30f,   0.2f, 2.0f},   // sea mist round the rock towers
+    {"15maw",         0.35f, -30.6f, 6.0f},   // the pit
+    {"18ascend",      0.25f,  -8.8f, 4.0f},
+};
+
+void sithAtmos_GetHeightFog(float* pDensity, float* pGroundZ, float* pFalloff)
+{
+    *pDensity = 0.0f; *pGroundZ = 0.0f; *pFalloff = 1.0f;
+    for (size_t i = 0; i < sizeof(sithAtmos_aHeightFog) / sizeof(sithAtmos_aHeightFog[0]); i++)
+    {
+        size_t n = strlen(sithAtmos_aHeightFog[i].level);
+        if (!strncasecmp(sithAtmos_worldName, sithAtmos_aHeightFog[i].level, n))
+        {
+            *pDensity = sithAtmos_aHeightFog[i].density;
+            *pGroundZ = sithAtmos_aHeightFog[i].groundZ;
+            *pFalloff = sithAtmos_aHeightFog[i].falloff;
+            return;
+        }
+    }
 }
 
 int sithAtmos_Update(const rdVector3* pCamPos, sithAtmosGrid** ppFine, sithAtmosGrid** ppCoarse)

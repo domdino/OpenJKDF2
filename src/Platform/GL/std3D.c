@@ -156,7 +156,7 @@ static GLuint std3D_fogTex[2] = {0, 0};
 static GLint std3D_fogU[16];
 static float std3D_fogCamPos[3];
 enum { FOGU_FINE, FOGU_COARSE, FOGU_FORIGIN, FOGU_FSIZE, FOGU_CORIGIN, FOGU_CSIZE, FOGU_PROJ, FOGU_SCREEN,
-       FOGU_WX, FOGU_WY, FOGU_WZ, FOGU_CAM, FOGU_FOG, FOGU_FOG2 };
+       FOGU_WX, FOGU_WY, FOGU_WZ, FOGU_CAM, FOGU_FOG, FOGU_FOG2, FOGU_HFOG };
 std3DSimpleTexStage std3D_shaftStage;
 static GLint std3D_shaftUniformNum = -1, std3D_shaftUniformPos = -1, std3D_shaftUniformCol = -1;
 // Added (remaster): volumetric sky (sithSky.c, sky_f.glsl). The cloud panorama is refreshed a
@@ -670,8 +670,8 @@ int init_resources()
     if (std3D_loadSimpleTexProgram("shaders/fog", &std3D_fogStage))
     {
         static const char* names[] = {"u_fine", "u_coarse", "u_fineOrigin", "u_fineSize", "u_coarseOrigin", "u_coarseSize",
-                                      "u_proj", "u_screen", "u_WX", "u_WY", "u_WZ", "u_camPos", "u_fog", "u_fog2"};
-        for (int k = 0; k < 14; k++) std3D_fogU[k] = std3D_tryFindUniform(std3D_fogStage.program, names[k]);
+                                      "u_proj", "u_screen", "u_WX", "u_WY", "u_WZ", "u_camPos", "u_fog", "u_fog2", "u_hfog"};
+        for (int k = 0; k < 15; k++) std3D_fogU[k] = std3D_tryFindUniform(std3D_fogStage.program, names[k]);
     }
     else std3D_fogStage.program = 0;
     if (!std3D_loadSimpleTexProgram("shaders/flare", &std3D_flareStage)) std3D_flareStage.program = 0; // Added (remaster)
@@ -3325,6 +3325,11 @@ void std3D_DrawSceneFbo()
             glUniform3fv(std3D_fogU[FOGU_CAM], 1, std3D_fogCamPos);
             glUniform4f(std3D_fogU[FOGU_FOG], jkPlayer_fogDensity, jkPlayer_fogGain, jkPlayer_fogMaxDist, (float)(SDL_GetTicks() % 1000000) / 1000.0f);
             glUniform4f(std3D_fogU[FOGU_FOG2], jkPlayer_fogNoise, 0.6f, 3.0f, 32.0f);
+            {
+                float hd, hz, hf;
+                sithAtmos_GetHeightFog(&hd, &hz, &hf);
+                glUniform4f(std3D_fogU[FOGU_HFOG], hd * jkPlayer_heightFog, hz, hf, 0.0f);
+            }
             glBlendFunc(GL_ONE, GL_SRC_ALPHA);
             std3D_DrawSimpleTex(&std3D_fogStage, pOut, std3D_pFb->tex4, 0, 0, 0.0, 0.0, 0.0, 0);
             for (int k = 0; k < 2; k++)

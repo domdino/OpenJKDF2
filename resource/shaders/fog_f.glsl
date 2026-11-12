@@ -21,6 +21,7 @@ uniform vec3 u_WZ;
 uniform vec3 u_camPos;        // camera position in the world
 uniform vec4 u_fog;           // density per unit, light gain, max distance, time (s)
 uniform vec4 u_fog2;          // noise amount, noise scale, light cap, steps
+uniform vec4 u_hfog;          // height fog: density at the ground, ground height (world z), falloff (units)
 uniform vec2 iResolution;
 uniform float param1;
 uniform float param2;
@@ -50,7 +51,17 @@ float noise(vec3 x)
 // Light in the air at a world position: fine grid where it has data, else coarse, else a dim
 // default. Cells with no data (inside walls) have alpha 0, so dividing by the filtered alpha
 // keeps walls from darkening the air next to them.
+vec3 airLightRaw(vec3 P);
+
+// Soft knee: dim air (0.2-0.4, a lit interior) keeps its light, bright air (open levels at 1.5+)
+// is compressed, or the fog turns white and brighter than the surfaces it sits in front of.
 vec3 airLight(vec3 P)
+{
+    vec3 L = airLightRaw(P);
+    return L / (1.0 + 0.6 * L);
+}
+
+vec3 airLightRaw(vec3 P)
 {
     vec3 uf = (P - u_fineOrigin) / u_fineSize;
     if (all(greaterThan(uf, vec3(0.0))) && all(lessThan(uf, vec3(1.0)))) {
@@ -63,6 +74,13 @@ vec3 airLight(vec3 P)
         if (s.a > 0.05) return min(s.rgb / s.a, vec3(u_fog2.z));
     }
     return vec3(0.01);
+}
+
+// Height fog: thick at and below the level's ground height, thinning upwards.
+float heightFog(float z)
+{
+    if (u_hfog.x <= 0.0) return 0.0;
+    return u_hfog.x * exp(-max(z - u_hfog.y, 0.0) / u_hfog.z);
 }
 
 void main(void)
@@ -88,9 +106,21 @@ void main(void)
         if (i >= steps) break;
         vec3 P = u_camPos + seg * ((float(i) + jitter) / float(steps));
         float n = noise(P * u_fog2.y + drift) * 0.65 + noise(P * u_fog2.y * 2.7 - drift * 1.7) * 0.35;
-        float dens = u_fog.x * max(0.0, 1.0 + u_fog2.x * (n * 2.0 - 1.0));
+        float nf = max(0.0, 1.0 + u_fog2.x * (n * 2.0 - 1.0));
+        float dens = (u_fog.x + heightFog(P.z)) * nf;
         float tr = exp(-dens * ds);
         scat += T * airLight(P) * (1.0 - tr);
+        T *= tr;
+    }
+    // Past the march: the rest of the way to far surfaces (up to 200 units) with the air at the
+    // end of the march, so distant terrain fades into the air instead of staying sharp.
+    if (depth > maxDist && d.a > 0.5 && d.z < 500.0) {
+        // Lighter than near fog and at most half opaque: open levels are hundreds of units across,
+        // and indoor density over that distance would wash everything out.
+        float rest = min(depth, 200.0) - maxDist;
+        float dens = u_fog.x * 0.3 + heightFog(endW.z);
+        float tr = max(exp(-dens * rest), 0.5);
+        scat += T * airLight(endW) * (1.0 - tr);
         T *= tr;
     }
     fragColor = vec4(scat * u_fog.y, T);

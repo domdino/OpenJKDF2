@@ -20,6 +20,10 @@ for v in $VIEWS; do
         tower)  MAP=14tower.jkl ;;
         fuel)   MAP=09fuelstation.jkl ;;
         barons) MAP=06abarons.jkl ;;
+        maw)    MAP=15maw.jkl ;;
+        ascend) MAP=18ascend.jkl ;;
+        house)  MAP=04escapehouse.jkl ;;
+        narpit) MAP=01narshadda.jkl; WARP="11.4 -0.2 5.0 -25 0 0" ;;
         saber)  MAP=01narshadda.jkl; WEAPON=10; export CAPTURE_CMDS=red5 ;;
         *) echo "unknown view $v"; continue ;;
     esac

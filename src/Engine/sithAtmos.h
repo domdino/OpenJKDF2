@@ -28,4 +28,8 @@ typedef struct sithAtmosGrid
 // Returns 0 when the level has no light volume (the fog falls back to screen-space haze).
 int sithAtmos_Update(const rdVector3* pCamPos, sithAtmosGrid** ppFine, sithAtmosGrid** ppCoarse);
 
+// The current level's height fog: density at and below the ground height, the ground height
+// (world z) and how fast it thins with height (units). Density 0 = none (indoor levels).
+void sithAtmos_GetHeightFog(float* pDensity, float* pGroundZ, float* pFalloff);
+
 #endif // _SITHATMOS_H

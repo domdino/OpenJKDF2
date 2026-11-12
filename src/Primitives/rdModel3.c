@@ -1,4 +1,5 @@
 #include "rdModel3.h"
+#include <math.h> // Added (remaster): sqrtf
 #include "World/jkPlayer.h" // Added (remaster): r_perPixelLighting
 
 // Added: on TWL, the big cold model payload arrays (aVertices/UVs/normals/faces/
@@ -2050,10 +2051,11 @@ static void rdModel3_ProbeLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* 
             // skylight doesn't wash out; only the edges (rims, floor light) go past it and glow.
             flex_t body = gain * (pc[c] * fill + keyC[c] * keyS * key * key) + dyn;
             if (body > 1.0f) body = 1.0f;
-            // The back-light rim tops out at 0.6 (it's often white skylight); the floor light
-            // can go past full brightness and glow (strips under the feet).
-            flex_t rimL = gain * rimC[c] * rimS * rim;
-            if (rimL > 0.6f) rimL = 0.6f;
+            // The back-light rim is a thin edge (rim^1.5) topping out at 0.35: under a white
+            // skylight a wider, brighter one made characters look like they glow. The floor
+            // light can go past full brightness and glow (strips under the feet).
+            flex_t rimL = gain * rimC[c] * rimS * rim * sqrtf(rim);
+            if (rimL > 0.35f) rimL = 0.35f;
             flex_t l = body + rimL + gain * cube[5][c] * (under + floorRim);
             if (l < floorL) l = floorL;
             if (l > cap) l = cap;

@@ -75,8 +75,8 @@ int jkPlayer_bReflections = 0;                              // Added (remaster)
 flex_t jkPlayer_reflectionStrength = 1.0;                   // Added (remaster)
 int jkPlayer_bHaze = 0;                                     // Added (remaster)
 int jkPlayer_bLensFlares = 0;                               // Added (remaster): streaks, ghosts and halo from bright sources
-flex_t jkPlayer_flareStrength = 1.0;
-flex_t jkPlayer_fixtureBloom = 1.0;                         // Added (remaster): bright light fixtures feed bloom
+flex_t jkPlayer_flareStrength = 0.4;
+flex_t jkPlayer_fixtureBloom = 0.6;                         // Added (remaster): bright light fixtures feed bloom
 int jkPlayer_bVolumetricFog = 0;                            // Added (remaster): fog lit by the baked light volume (sithAtmos)
 flex_t jkPlayer_fogDensity = 0.1;                          // per world unit
 flex_t jkPlayer_fogGain = 1.0;
@@ -262,8 +262,8 @@ void jkPlayer_StartupVars()
     // Lens flares from everything that blooms, and bright light fixtures (skylights, lamps) feeding
     // bloom. Need r_enableBloom.
     sithCvar_RegisterBool("r_lensFlares",               0,                          &jkPlayer_bLensFlares,              CVARFLAG_LOCAL);
-    sithCvar_RegisterFlex("r_flareStrength",            1.0,                        &jkPlayer_flareStrength,            CVARFLAG_LOCAL);
-    sithCvar_RegisterFlex("r_fixtureBloom",             1.0,                        &jkPlayer_fixtureBloom,             CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_flareStrength",            0.4,                        &jkPlayer_flareStrength,            CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_fixtureBloom",             0.6,                        &jkPlayer_fixtureBloom,             CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_volumetricFog",            0,                          &jkPlayer_bVolumetricFog,           CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_fogDensity",               0.1,                        &jkPlayer_fogDensity,               CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_fogGain",                  1.0,                        &jkPlayer_fogGain,                  CVARFLAG_LOCAL);

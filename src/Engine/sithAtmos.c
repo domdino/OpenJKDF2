@@ -45,6 +45,65 @@ static sithAtmosGrid sithAtmos_aGrids[2];
 static float sithAtmos_aVolumes[VOL_MAX * VOL_STRIDE];
 static int sithAtmos_numVolumes = 0;
 
+// Emitters: center:3, kind:1, rate:1, life:1, size:1, grow:1, rise:1, spread:1, tint:3, opacity:1, drift:2.
+#define EMIT_STRIDE 16
+#define EMIT_MAX 64
+static float sithAtmos_aEmitters[EMIT_MAX * EMIT_STRIDE];
+static int sithAtmos_numEmitters = 0;
+
+static float sithAtmos_Hash(float x)
+{
+    float s = sinf(x * 12.9898f + 78.233f) * 43758.5453f;
+    return s - floorf(s);
+}
+
+int sithAtmos_GetParticles(float t, const rdVector3* pCam, sithAtmosParticle* pOut, int max)
+{
+    int n = 0;
+    for (int e = 0; e < sithAtmos_numEmitters && n < max; e++) {
+        const float* E = &sithAtmos_aEmitters[e * EMIT_STRIDE];
+        float dx = E[0] - pCam->x, dy = E[1] - pCam->y, dz = E[2] - pCam->z;
+        if (dx * dx + dy * dy + dz * dz > 60.0f * 60.0f) continue;
+        float rate = fmaxf(E[4], 0.1f), life = fmaxf(E[5], 0.2f);
+        int count = (int)(rate * life);
+        if (count < 1) count = 1;
+        if (count > 24) count = 24;
+        for (int i = 0; i < count && n < max; i++) {
+            float cyc = t / life + (float)i / (float)count + (float)e * 0.137f;
+            float phase = cyc - floorf(cyc);
+            float seed = sithAtmos_Hash(floorf(cyc) * 7.31f + (float)i * 1.73f + (float)e * 11.1f);
+            float s2 = sithAtmos_Hash(seed * 91.7f), s3 = sithAtmos_Hash(seed * 47.3f);
+            float age = phase * life;
+            float spread = E[9] * (0.3f + 0.7f * phase);
+            sithAtmosParticle* p = &pOut[n++];
+            p->pos[0] = E[0] + E[14] * age + (s2 - 0.5f) * 2.0f * spread;
+            p->pos[1] = E[1] + E[15] * age + (s3 - 0.5f) * 2.0f * spread;
+            p->pos[2] = E[2] + E[8] * age;
+            p->radius = fmaxf(E[6], 0.005f) * (1.0f + (E[7] - 1.0f) * phase);
+            p->age = phase;
+            p->seed = seed;
+            p->kind = E[3];
+            p->tint[0] = E[10]; p->tint[1] = E[11]; p->tint[2] = E[12];
+            p->opacity = E[13];
+        }
+    }
+    return n;
+}
+
+static void sithAtmos_LoadEmitters(const char* path)
+{
+    for (int i = 0; i < EMIT_MAX; i++) {
+        // Defaults: steam, 8 a second, 2.5 s, 0.04 units growing x3, rising 0.12 units/s.
+        static const float def[EMIT_STRIDE] = {0, 0, 0, 0, 8, 2.5f, 0.04f, 3, 0.12f, 0.02f, 1, 1, 1, 0.6f, 0, 0};
+        memcpy(&sithAtmos_aEmitters[i * EMIT_STRIDE], def, sizeof(def));
+    }
+    sithAtmos_numEmitters = stdJSON_ReadObjectArray(path, "emitters",
+        "center:3,kind:1,rate:1,life:1,size:1,grow:1,rise:1,spread:1,tint:3,opacity:1,drift:2",
+        sithAtmos_aEmitters, EMIT_MAX);
+    if (sithAtmos_numEmitters)
+        stdPlatform_Printf("atmos: %d smoke/steam emitters from %s\n", sithAtmos_numEmitters, path);
+}
+
 static void sithAtmos_LoadVolumes(const char* name)
 {
     char path[128];
@@ -58,6 +117,7 @@ static void sithAtmos_LoadVolumes(const char* name)
                                                    sithAtmos_aVolumes, VOL_MAX);
     if (sithAtmos_numVolumes)
         stdPlatform_Printf("atmos: %d fog volumes from %s\n", sithAtmos_numVolumes, path);
+    sithAtmos_LoadEmitters(path);
 }
 
 int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize, float* pParams, float* pTint, int max)

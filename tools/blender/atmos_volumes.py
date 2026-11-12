@@ -11,7 +11,11 @@ Text editor). Then in the 3D view press N and open the "JK Atmos" tab:
        density  how thick (the base haze is 0.1 per unit; 1-3 is a dense bank)
        tint     colour the fog scatters (white = takes the light's colour; darker = smoky)
        soft     how much of the edge fades out (0 = hard box, 1 = fades from the centre)
-  3. Export writes atmos/<level>.json. The game reads it at level load (r_fogVolumes 1,
+  3. Add Steam / Add Smoke put an emitter at the 3D cursor (a small arrow pointing up). Its
+     settings: rate (puffs a second), life (seconds each), size (start radius, units), grow
+     (end size x), rise (units a second), spread, drift (X/Y wind, units a second), tint,
+     opacity. Smoke is dense and takes its tint; steam is white and wispy.
+  4. Export writes atmos/<level>.json. The game reads it at level load (r_fogVolumes 1,
      needs r_volumetricFog and a baked light volume). Capture or play to see it.
 
 Headless test: Blender -b --python tools/blender/atmos_volumes.py -- --test 12escape
@@ -79,6 +83,29 @@ def make_volume(name, shape, center, size, rot_z, density, tint, soft):
     return e
 
 
+EMITTER_DEFAULTS = {0: dict(rate=8.0, life=3.5, size=0.05, grow=5.0, rise=0.12, spread=0.04, opacity=0.6, tint=(1, 1, 1)),
+                    1: dict(rate=5.0, life=6.0, size=0.12, grow=3.5, rise=0.12, spread=0.08, opacity=0.85, tint=(0.45, 0.42, 0.4))}
+
+
+def make_emitter(name, kind, center, **kw):
+    e = bpy.data.objects.new(name, None)
+    e.empty_display_type = "SINGLE_ARROW"
+    e.empty_display_size = 0.15
+    e.location = center
+    e.jk_emit = True
+    e.jk_emit_kind = kind
+    p = dict(EMITTER_DEFAULTS[kind])
+    p.update({k: v for k, v in kw.items() if v is not None})
+    e.jk_emit_rate, e.jk_emit_life, e.jk_emit_size = p["rate"], p["life"], p["size"]
+    e.jk_emit_grow, e.jk_emit_rise, e.jk_emit_spread = p["grow"], p["rise"], p["spread"]
+    e.jk_emit_opacity = p["opacity"]
+    e.jk_fog_tint = p["tint"]
+    e.jk_emit_drift = p.get("drift", (0.0, 0.0))
+    e.color = (*p["tint"], 1.0)
+    fog_collection().objects.link(e)
+    return e
+
+
 def load_level(level):
     root = repo_root()
     folder = os.path.join(root, "hd", "lightbake", level)
@@ -86,7 +113,7 @@ def load_level(level):
     if not os.path.exists(lj):
         raise RuntimeError("no light bake export for %s (run tools/lightbake/jkl_export.py %s)" % (level, level))
     for o in list(bpy.data.objects):
-        if o.name.startswith("level") or o.get("jk_fog") or getattr(o, "jk_fog", False):
+        if o.name.startswith("level") or getattr(o, "jk_fog", False) or getattr(o, "jk_emit", False):
             bpy.data.objects.remove(o, do_unlink=True)
     lb = lightbake_helpers(root)
     d = json.load(open(lj))
@@ -107,6 +134,13 @@ def load_level(level):
             make_volume(v.get("name", "fog %d" % i), int(v.get("shape", 0)), v.get("center", [0, 0, 0]),
                         v.get("size", [1, 1, 1]), v.get("rot_z", 0.0), v.get("density", 0.5),
                         v.get("tint", [1, 1, 1]), v.get("soft", 0.3))
+            n += 1
+        for i, v in enumerate(json.load(open(path)).get("emitters", [])):
+            make_emitter(v.get("name", "emitter %d" % i), int(v.get("kind", 0)), v.get("center", [0, 0, 0]),
+                         rate=v.get("rate"), life=v.get("life"), size=v.get("size"), grow=v.get("grow"),
+                         rise=v.get("rise"), spread=v.get("spread"), opacity=v.get("opacity"),
+                         tint=tuple(v["tint"]) if "tint" in v else None,
+                         drift=tuple(v["drift"]) if "drift" in v else None)
             n += 1
     bpy.context.scene.jk_level = level
     return n
@@ -129,11 +163,23 @@ def export_level(level):
             "tint": [round(x, 4) for x in o.jk_fog_tint],
             "soft": round(o.jk_fog_soft, 3),
         })
+    emits = []
+    for o in bpy.data.objects:
+        if not getattr(o, "jk_emit", False):
+            continue
+        emits.append({
+            "name": o.name, "kind": o.jk_emit_kind,
+            "center": [round(x, 4) for x in o.location],
+            "rate": round(o.jk_emit_rate, 3), "life": round(o.jk_emit_life, 3), "size": round(o.jk_emit_size, 4),
+            "grow": round(o.jk_emit_grow, 3), "rise": round(o.jk_emit_rise, 4), "spread": round(o.jk_emit_spread, 4),
+            "tint": [round(x, 4) for x in o.jk_fog_tint], "opacity": round(o.jk_emit_opacity, 3),
+            "drift": [round(x, 4) for x in o.jk_emit_drift],
+        })
     os.makedirs(os.path.join(root, "atmos"), exist_ok=True)
     path = os.path.join(root, "atmos", level + ".json")
     with open(path, "w") as f:
-        json.dump({"level": level, "volumes": vols}, f, indent=2)
-    return path, len(vols)
+        json.dump({"level": level, "volumes": vols, "emitters": emits}, f, indent=2)
+    return path, len(vols) + len(emits)
 
 
 class JKATMOS_OT_load(bpy.types.Operator):
@@ -161,6 +207,21 @@ class JKATMOS_OT_add(bpy.types.Operator):
         c = context.scene.cursor.location
         e = make_volume("fog box" if self.shape == 0 else "fog ellipsoid", self.shape, tuple(c),
                         (2.0, 2.0, 0.4), 0.0, 1.0, (1.0, 1.0, 1.0), 0.5)
+        for o in context.selected_objects:
+            o.select_set(False)
+        e.select_set(True)
+        context.view_layer.objects.active = e
+        return {"FINISHED"}
+
+
+class JKATMOS_OT_add_emitter(bpy.types.Operator):
+    bl_idname = "jkatmos.add_emitter"
+    bl_label = "Add Emitter"
+    bl_description = "Add a smoke or steam emitter at the 3D cursor"
+    kind: bpy.props.IntProperty(default=0)
+
+    def execute(self, context):
+        e = make_emitter("steam" if self.kind == 0 else "smoke", self.kind, tuple(context.scene.cursor.location))
         for o in context.selected_objects:
             o.select_set(False)
         e.select_set(True)
@@ -196,7 +257,18 @@ class JKATMOS_PT_panel(bpy.types.Panel):
         row = lay.row(align=True)
         row.operator("jkatmos.add_fog", text="Add Fog Box").shape = 0
         row.operator("jkatmos.add_fog", text="Add Fog Ellipsoid").shape = 1
+        row = lay.row(align=True)
+        row.operator("jkatmos.add_emitter", text="Add Steam").kind = 0
+        row.operator("jkatmos.add_emitter", text="Add Smoke").kind = 1
         o = context.active_object
+        if o and getattr(o, "jk_emit", False):
+            box = lay.box()
+            box.label(text=o.name)
+            box.prop(o, "jk_emit_kind", text="Smoke (1) / steam (0)")
+            for prop, label in (("jk_emit_rate", "Rate"), ("jk_emit_life", "Life"), ("jk_emit_size", "Size"),
+                                ("jk_emit_grow", "Grow"), ("jk_emit_rise", "Rise"), ("jk_emit_spread", "Spread"),
+                                ("jk_emit_drift", "Drift"), ("jk_fog_tint", "Tint"), ("jk_emit_opacity", "Opacity")):
+                box.prop(o, prop, text=label)
         if o and getattr(o, "jk_fog", False):
             box = lay.box()
             box.label(text=o.name)
@@ -219,7 +291,7 @@ def _tint_update(self, context):
     self.color = (*self.jk_fog_tint, 1.0)
 
 
-CLASSES = (JKATMOS_OT_load, JKATMOS_OT_add, JKATMOS_OT_export, JKATMOS_PT_panel, JKATMOS_Prefs)
+CLASSES = (JKATMOS_OT_load, JKATMOS_OT_add, JKATMOS_OT_add_emitter, JKATMOS_OT_export, JKATMOS_PT_panel, JKATMOS_Prefs)
 
 
 def register():
@@ -229,6 +301,16 @@ def register():
     bpy.types.Object.jk_fog_tint = bpy.props.FloatVectorProperty(subtype="COLOR", size=3, default=(1, 1, 1),
                                                                  min=0.0, max=1.0, update=_tint_update)
     bpy.types.Object.jk_fog_soft = bpy.props.FloatProperty(default=0.5, min=0.0, max=1.0)
+    bpy.types.Object.jk_emit = bpy.props.BoolProperty(default=False)
+    bpy.types.Object.jk_emit_kind = bpy.props.IntProperty(default=0, min=0, max=1)
+    bpy.types.Object.jk_emit_rate = bpy.props.FloatProperty(default=8.0, min=0.1, soft_max=20.0)
+    bpy.types.Object.jk_emit_life = bpy.props.FloatProperty(default=3.5, min=0.2, soft_max=10.0)
+    bpy.types.Object.jk_emit_size = bpy.props.FloatProperty(default=0.05, min=0.005, soft_max=1.0)
+    bpy.types.Object.jk_emit_grow = bpy.props.FloatProperty(default=5.0, min=0.1, soft_max=10.0)
+    bpy.types.Object.jk_emit_rise = bpy.props.FloatProperty(default=0.12, soft_min=-1.0, soft_max=1.0)
+    bpy.types.Object.jk_emit_spread = bpy.props.FloatProperty(default=0.04, min=0.0, soft_max=1.0)
+    bpy.types.Object.jk_emit_opacity = bpy.props.FloatProperty(default=0.6, min=0.0, max=1.0)
+    bpy.types.Object.jk_emit_drift = bpy.props.FloatVectorProperty(size=2, default=(0.0, 0.0))
     for c in CLASSES:
         bpy.utils.register_class(c)
 

@@ -152,6 +152,9 @@ std3DSimpleTexStage std3D_hazeStage;
 // Added (remaster): volumetric fog (sithAtmos), lit by the baked light volume.
 std3DSimpleTexStage std3D_fogStage;
 std3DSimpleTexStage std3D_flareStage; // Added (remaster): lens flares
+std3DSimpleTexStage std3D_smokeStage; // Added (remaster): smoke and steam
+static GLint std3D_smokeU[16];
+enum { SMU_FINE, SMU_COARSE, SMU_FORIGIN, SMU_FSIZE, SMU_CORIGIN, SMU_CSIZE, SMU_NUM, SMU_SCREEN, SMU_WORLD, SMU_LOOK, SMU_MISC, SMU_ASPECT, SMU_TIME };
 static GLuint std3D_fogTex[2] = {0, 0};
 static GLint std3D_fogU[16];
 static float std3D_fogCamPos[3];
@@ -677,6 +680,13 @@ int init_resources()
     }
     else std3D_fogStage.program = 0;
     if (!std3D_loadSimpleTexProgram("shaders/flare", &std3D_flareStage)) std3D_flareStage.program = 0; // Added (remaster)
+    if (std3D_loadSimpleTexProgram("shaders/smoke", &std3D_smokeStage)) // Added (remaster)
+    {
+        static const char* names[] = {"u_fine", "u_coarse", "u_fineOrigin", "u_fineSize", "u_coarseOrigin", "u_coarseSize",
+                                      "u_numP", "u_pScreen", "u_pWorld", "u_pLook", "u_pMisc", "u_aspect", "u_time"};
+        for (int k = 0; k < 13; k++) std3D_smokeU[k] = std3D_tryFindUniform(std3D_smokeStage.program, names[k]);
+    }
+    else std3D_smokeStage.program = 0;
     if (!std3D_loadSimpleTexProgram("shaders/shafts", &std3D_shaftStage)) return false;
     std3D_shaftUniformNum = std3D_tryFindUniform(std3D_shaftStage.program, "u_numShafts");
     std3D_shaftUniformPos = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftPos");
@@ -3345,6 +3355,63 @@ void std3D_DrawSceneFbo()
             }
             glBlendFunc(GL_ONE, GL_SRC_ALPHA);
             std3D_DrawSimpleTex(&std3D_fogStage, pOut, std3D_pFb->tex4, 0, 0, 0.0, 0.0, 0.0, 0);
+
+            // Added (remaster): smoke and steam puffs from the level's emitters, lit by the same
+            // light volume (still bound on units 6 and 7).
+            if (jkPlayer_bSmoke && std3D_smokeStage.program)
+            {
+                static sithAtmosParticle parts[SITHATMOS_MAX_PARTICLES];
+                float tsec = (float)(SDL_GetTicks() % 100000000) / 1000.0f;
+                int np = sithAtmos_GetParticles(tsec, &cam, parts, SITHATMOS_MAX_PARTICLES);
+                float scr[64 * 4], wld[64 * 4], look[64 * 4], misc[64 * 4], depth[64];
+                int order[64], ns = 0;
+                const float* A = std3D_skyWorldAxes;
+                for (int i = 0; i < np; i++)
+                {
+                    float vx = parts[i].pos[0] - std3D_fogCamPos[0], vy = parts[i].pos[1] - std3D_fogCamPos[1], vz = parts[i].pos[2] - std3D_fogCamPos[2];
+                    float X = vx * A[0] + vy * A[3] + vz * A[6];
+                    float Y = vx * A[1] + vy * A[4] + vz * A[7];
+                    float Z = vx * A[2] + vy * A[5] + vz * A[8];
+                    if (Y < 0.03f) continue;
+                    float cx = std3D_ssrProj[0] + X * std3D_ssrProj[2] / Y;
+                    float cy = std3D_ssrProj[1] - Z * std3D_ssrProj[2] / Y;
+                    float u = cx / std3D_ssrScreen[0], v = 1.0f - cy / std3D_ssrScreen[1];
+                    float r = parts[i].radius * std3D_ssrProj[2] / Y / std3D_ssrScreen[1];
+                    float aspect = std3D_ssrScreen[0] / std3D_ssrScreen[1];
+                    if (u + r / aspect < 0.0f || u - r / aspect > 1.0f || v + r < 0.0f || v - r > 1.0f) continue;
+                    int j = ns++;
+                    while (j > 0 && depth[j - 1] < Y) { order[j] = order[j - 1]; depth[j] = depth[j - 1]; memcpy(&scr[j * 4], &scr[(j - 1) * 4], 16); j--; }
+                    order[j] = i; depth[j] = Y;
+                    scr[j * 4 + 0] = u; scr[j * 4 + 1] = v; scr[j * 4 + 2] = r; scr[j * 4 + 3] = Y;
+                }
+                for (int j = 0; j < ns; j++)
+                {
+                    const sithAtmosParticle* p = &parts[order[j]];
+                    wld[j * 4 + 0] = p->pos[0]; wld[j * 4 + 1] = p->pos[1]; wld[j * 4 + 2] = p->pos[2]; wld[j * 4 + 3] = p->age;
+                    look[j * 4 + 0] = p->tint[0]; look[j * 4 + 1] = p->tint[1]; look[j * 4 + 2] = p->tint[2]; look[j * 4 + 3] = p->opacity;
+                    misc[j * 4 + 0] = p->seed; misc[j * 4 + 1] = p->kind; misc[j * 4 + 2] = 0.0f; misc[j * 4 + 3] = 0.0f;
+                }
+                if (ns)
+                {
+                    glUseProgram(std3D_smokeStage.program);
+                    for (int k = 0; k < 2; k++)
+                    {
+                        float sp = g[k]->spacing;
+                        glUniform1i(std3D_smokeU[SMU_FINE + k], 6 + k);
+                        glUniform3f(std3D_smokeU[SMU_FORIGIN + 2 * k], (g[k]->origin[0] - 0.5f) * sp, (g[k]->origin[1] - 0.5f) * sp, (g[k]->origin[2] - 0.5f) * sp);
+                        glUniform3f(std3D_smokeU[SMU_FSIZE + 2 * k], g[k]->dims[0] * sp, g[k]->dims[1] * sp, g[k]->dims[2] * sp);
+                    }
+                    glUniform1i(std3D_smokeU[SMU_NUM], ns);
+                    glUniform4fv(std3D_smokeU[SMU_SCREEN], ns, scr);
+                    glUniform4fv(std3D_smokeU[SMU_WORLD], ns, wld);
+                    glUniform4fv(std3D_smokeU[SMU_LOOK], ns, look);
+                    glUniform4fv(std3D_smokeU[SMU_MISC], ns, misc);
+                    glUniform1f(std3D_smokeU[SMU_ASPECT], std3D_ssrScreen[0] / std3D_ssrScreen[1]);
+                    glUniform1f(std3D_smokeU[SMU_TIME], tsec);
+                    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                    std3D_DrawSimpleTex(&std3D_smokeStage, pOut, std3D_pFb->tex4, 0, 0, 0.0, 0.0, 0.0, 0);
+                }
+            }
             for (int k = 0; k < 2; k++)
             {
                 glActiveTexture(GL_TEXTURE0 + 6 + k);

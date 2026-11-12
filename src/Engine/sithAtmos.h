@@ -40,4 +40,21 @@ void sithAtmos_GetHeightFog(float* pDensity, float* pGroundZ, float* pFalloff);
 //   cos and sin of the rotation about z, density, 0; tint rgb + 0. Returns how many.
 int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize, float* pParams, float* pTint, int max);
 
+// Smoke and steam emitters (same JSON, "emitters" array). Particles are a function of time only
+// (no simulation state): each emitter keeps rate x life particles cycling from birth to death.
+#define SITHATMOS_MAX_PARTICLES 64
+typedef struct sithAtmosParticle
+{
+    float pos[3];      // world
+    float radius;      // world units
+    float age;         // 0 = just born, 1 = dying
+    float seed;        // 0-1, varies per particle and per cycle
+    float kind;        // 0 steam, 1 smoke
+    float tint[3];
+    float opacity;
+} sithAtmosParticle;
+
+// Particles of emitters within reach of the camera (up to max). Returns how many.
+int sithAtmos_GetParticles(float timeSec, const rdVector3* pCamPos, sithAtmosParticle* pOut, int max);
+
 #endif // _SITHATMOS_H

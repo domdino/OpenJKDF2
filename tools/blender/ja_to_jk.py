@@ -304,10 +304,21 @@ def main():
     # Posture first: hips, then the whole upper body (shoulder line, lean, twist), as blocks.
     W = lambda b: arm.matrix_world @ arm.pose.bones[b].head
     if {"lthigh", "rthigh", "torso"} <= native:
-        # base point straight below the hip midpoint: only the hip line's turn is matched
+        # Base point "below" the hip midpoint, so only the hip line's turn is matched. Below means
+        # world down for a standing model; for one lying down (the bar drunk) it means along the
+        # spine, away from the torso, or the hips stay upright and stick out of the body.
         drop = Vector((0, 0, 0.05))
+        jk_mid = (joint["lthigh"] + joint["rthigh"]) / 2
+        spine = jk_mid - joint["torso"]
+        jk_drop = drop
+        if spine.length > 1e-6 and spine.normalized().dot(Vector((0, 0, -1))) < 0.7:   # over ~45 degrees off vertical
+            jk_drop = -spine.normalized() * 0.05
+            ja_mid = (W("lfemurYZ") + W("rfemurYZ")) / 2
+            ja_spine = ja_mid - W("upper_lumbar")
+            drop = -ja_spine.normalized() * 0.05
+            log("lying pose: hips aligned along the spine")
         align_block(arm, "pelvis", W("lfemurYZ"), W("rfemurYZ"), (W("lfemurYZ") + W("rfemurYZ")) / 2 - drop,
-                    joint["lthigh"], joint["rthigh"], (joint["lthigh"] + joint["rthigh"]) / 2 - drop, move=False)
+                    joint["lthigh"], joint["rthigh"], jk_mid - jk_drop, move=False)
     if {"lshouldr", "rshouldr", "torso"} <= native:
         align_block(arm, "upper_lumbar", W("lhumerus"), W("rhumerus"), W("upper_lumbar"),
                     joint["lshouldr"], joint["rshouldr"], joint["torso"])

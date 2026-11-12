@@ -253,10 +253,17 @@ def main():
                 vs = {v for f in sme.faces if src_m.materials[f["mat"]].lower().startswith(prefix) for v, _ in f["idx"]}
                 return [(carry @ src_rest[src_ih] @ [*sme.verts[v][:3], 1.0])[:3] for v in vs]
             tips, thumb = pts("hdftip"), pts("hdsdthum")
-            if not tips or not thumb:
-                continue
             nd = src_m.nodes[src_ih]
             w_jk = (carry @ src_rest[src_ih] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1.0])[:3]
+            if not tips and thumb and JKE:
+                # No fingertip texture (the sequencer's flat hand): the hand points farthest from
+                # the wrist stand in for the fingertips; the surface fit below refines it.
+                hand = np.array(pts("hdinsid") + pts("hdback"))
+                if len(hand):
+                    d = np.linalg.norm(hand - w_jk, axis=1)
+                    tips = list(hand[d >= np.quantile(d, 0.8)])
+            if not tips or not thumb:
+                continue
             t_jk, th_jk = np.mean(tips, axis=0), np.mean(thumb, axis=0)
             a = arms[side]
             w_ja, t_ja, th_ja = (np.array(a[k]) for k in ("wrist", "tips", "thumb"))
@@ -268,6 +275,10 @@ def main():
             ish = nodes["shoulder"]
             show_shoulder = ish is not None and m.nodes[ish].mesh >= 0 and any(
                 m.materials[f["mat"]].lower().startswith("kyrarm") for f in geo[m.nodes[ish].mesh].faces)
+            if m97 is not None:   # JKE's upper arm is HAND_TEX: ask the 1997 model whether one shows
+                i97 = node_named(m97, "k_%sshouldr" % side)
+                show_shoulder = ish is not None and i97 is not None and m97.nodes[i97].mesh >= 0 and any(
+                    m97.materials[f["mat"]].lower().startswith("kyrarm") for f in m97.geosets[0][m97.nodes[i97].mesh].faces)
             keep_v = []
             for r in a["roles"]:
                 dom = max(r, key=r.get)

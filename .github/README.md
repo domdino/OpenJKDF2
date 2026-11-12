@@ -140,7 +140,7 @@ Six levels, 1997 vs remaster:
 
 ![Hand-placed floor mist in the hangar](../docs/screenshots/stage2-fog-volumes-hangar.jpg)
 
-**Smoke, steam and dust:** emitters placed in the same Blender add-on, drawn as soft puffs that billow and rise, fade into floors and walls, and take the baked light around them; dust motes drift and twinkle wherever the air is lit:
+**Smoke, steam and dust:** emitters placed in the same Blender add-on, drawn as soft puffs that billow and rise, fade into floors and walls, and take the baked light around them; dust motes drift and twinkle wherever the air is lit ([video](../docs/screenshots/stage2-atmosphere-hangar.mp4)):
 
 ![Smoke and steam in the hangar](../docs/screenshots/stage2-smoke-hangar.jpg)
 

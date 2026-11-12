@@ -44,6 +44,7 @@ arg, build, add_lights, add_glow_cards, set_glow, add_bake_target, sample = (
 LAYERS = (0.03, 0.09)  # probe heights above the floor: shins, chest (Kyle is 0.18 tall)
 CHEST = LAYERS[1]
 CUBE = 0.004          # probe cube size
+MAX_PER_FLOOR = 20000  # grid points per floor surface (huge floors get coarser spacing)
 CELL = 3              # texels per quad side
 # Faces: (normal, t1, t2) with t1 x t2 = normal, so the quad faces outwards.
 FACES = [((1, 0, 0), (0, 1, 0), (0, 0, 1)), ((-1, 0, 0), (0, 0, 1), (0, 1, 0)),
@@ -72,8 +73,13 @@ def place(d, spacing):
             continue
         P = V[s["v"]]
         lo, hi = P[:, :2].min(0), P[:, :2].max(0)
-        xs = (np.arange(np.floor(lo[0] / spacing), np.ceil(hi[0] / spacing) + 1) + 0.5) * spacing
-        ys = (np.arange(np.floor(lo[1] / spacing), np.ceil(hi[1] / spacing) + 1) + 0.5) * spacing
+        # Huge floors (open space, canyon bottoms hundreds of units across) get coarser probes:
+        # at most MAX_PER_FLOOR grid points each, or a level like Escape '88 needs millions.
+        sp = spacing
+        while ((hi[0] - lo[0]) / sp + 2) * ((hi[1] - lo[1]) / sp + 2) > MAX_PER_FLOOR:
+            sp *= 2.0
+        xs = (np.arange(np.floor(lo[0] / sp), np.ceil(hi[0] / sp) + 1) + 0.5) * sp
+        ys = (np.arange(np.floor(lo[1] / sp), np.ceil(hi[1] / sp) + 1) + 0.5) * sp
         gx, gy = np.meshgrid(xs, ys)
         pts = np.stack([gx.ravel(), gy.ravel()], 1)
         # Inside the polygon (convex, either winding) in the XY projection.
@@ -83,7 +89,7 @@ def place(d, spacing):
         inside = np.all(cross >= -1e-9, 1) | np.all(cross <= 1e-9, 1)
         for x, y in pts[inside]:
             z = P[0, 2] - (n[0] * (x - P[0, 0]) + n[1] * (y - P[0, 1])) / n[2]
-            key = (int(round(x / spacing * 2)), int(round(y / spacing * 2)), int(round(z * 50)))
+            key = (int(round(x / spacing * 2)), int(round(y / spacing * 2)), int(round(z * 50)))  # noqa
             if key in seen:
                 continue
             seen.add(key)

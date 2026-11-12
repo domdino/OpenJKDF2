@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Bake light maps for many levels in one go (light bake, step 5).
 
-    python3 tools/lightbake/bake_all.py [LEVEL ...] [--skip-done] [--rebake LEVEL,...] [--probes-only]
+    python3 tools/lightbake/bake_all.py [LEVEL ...] [--skip-done] [--rebake LEVEL,...] [--probes-only] [--volume-only]
 
 For each level (default: every level in JK1.GOB): export it (tools/lightbake/jkl_export.py,
 --density auto), recover the designer lights (fit_lights.py --occlusion), bake in Blender
 (tools/blender/lightbake.py, the settings tuned on the six test levels) and write the
 sidecar the game loads (tools/blender/lightmap_sidecar.py), then the light probes for models
-(tools/blender/probe_bake.py). --probes-only bakes just the probes of levels already baked. --skip-done leaves levels that
+(tools/blender/probe_bake.py) and the light volume for the fog (tools/lightbake/volume_points.py,
+tools/blender/volume_bake.py). --probes-only / --volume-only bake just those for levels already baked. --skip-done leaves levels that
 already have hd/jkgm/lightmaps/<level>.jklm alone; --rebake bakes and re-exports the sidecar
 only, keeping the level's export and lights (for a new sky, say).
 
@@ -59,7 +60,7 @@ def run(cmd, tag):
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     out = (p.stdout or "") + (p.stderr or "")
     keep = [l for l in out.splitlines() if any(k in l for k in
-            ("light map:", "fit:", "VIS: done", "calibration", "final bake", "SIDECAR", "PROBES", "Error", "FAILED", "Traceback"))]
+            ("light map:", "fit:", "VIS: done", "calibration", "final bake", "SIDECAR", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
     for l in keep:
         log("  " + l.strip())
     if p.returncode != 0 or "FAILED" in out:
@@ -78,13 +79,23 @@ def main():
     rebake = set(sys.argv[sys.argv.index("--rebake") + 1].split(",")) if "--rebake" in sys.argv else set()
     args = [a for a in args if a not in rebake]
     # No levels named: all of them (with --rebake alone, only the rebakes).
-    if not args and (not rebake or "--skip-done" in sys.argv or "--probes-only" in sys.argv):
+    if not args and (not rebake or "--skip-done" in sys.argv or "--probes-only" in sys.argv or "--volume-only" in sys.argv):
         sys.path.insert(0, os.path.dirname(HERE))
         import mat_extract as mx
         args = sorted(os.path.basename(n)[:-4] for n, _, _ in mx.gob_entries(
             os.path.join(ROOT, "gamedata", "jk1", "Episode", "JK1.GOB")) if n.endswith(".jkl"))
     for level in list(rebake) + args:
         folder = os.path.join("hd", "lightbake", level)
+        if "--volume-only" in sys.argv:
+            if not os.path.exists(os.path.join(ROOT, folder, "probes.json")):
+                log("%s: no probes yet (they hold the calibration), volume skipped" % level)
+                continue
+            t0 = time.time()
+            sky, preset = sky_for(os.path.join(ROOT, folder))
+            if run(["python3", "-I", "tools/lightbake/volume_points.py", level], "volume points") and \
+                    run(blender("tools/blender/volume_bake.py", folder, *BAKE_ARGS, "--sky", sky), "volume"):
+                log("%s: volume done in %.1f min" % (level, (time.time() - t0) / 60))
+            continue
         if "--probes-only" in sys.argv:
             if not os.path.exists(os.path.join(ROOT, folder, "lightmap.exr")):
                 log("%s: no light bake yet, probes skipped" % level)
@@ -112,6 +123,10 @@ def main():
         if not run(blender("tools/blender/lightmap_sidecar.py", folder), "sidecar"):
             continue
         if not run(blender("tools/blender/probe_bake.py", folder, *BAKE_ARGS, "--sky", sky), "probes"):
+            continue
+        if not run(["python3", "-I", "tools/lightbake/volume_points.py", level], "volume points"):
+            continue
+        if not run(blender("tools/blender/volume_bake.py", folder, *BAKE_ARGS, "--sky", sky), "volume"):
             continue
         log("%s: done in %.1f min" % (level, (time.time() - t0) / 60))
 

@@ -51,8 +51,9 @@ def main():
         if not args.all and str(info.get("status", "")).upper() not in ("PASS", "WARN"):
             skipped += 1
             continue
-        mat, cel = m.group(1), int(m.group(2))
-        entry = {"name": "texturegod.%s.cel%d" % (mat, cel),
+        # "<mat>@<level>" names a variant extracted in that level's palette.
+        mat, cel = m.group(1).split("@")[0], int(m.group(2))
+        entry = {"name": "texturegod.%s.cel%d" % (m.group(1), cel),
                  "replaces": [{"name": "mat/%s.mat" % mat, "cel": cel}]}
         for key, field in (("albedo", "albedo_map"), ("orm", "orm_map"), ("normal", "normal_map"), ("emissive", "emissive_map")):
             fn = files.get(key)

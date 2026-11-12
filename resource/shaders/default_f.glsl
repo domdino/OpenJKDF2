@@ -87,6 +87,7 @@ uniform vec4 u_pplProj;                 // half screen width, half screen height
 uniform vec4 u_pplScreen;               // canvas width, canvas height, framebuffer width, height
 uniform float u_pplSpecular;            // overall highlight strength
 uniform float u_pplWetness;             // 0 = matte, 1 = soaked
+uniform vec3 u_screenTint;              // Added (remaster): 1997 screen tint as a colour multiplier (std3D)
 uniform float u_fixtureBloom;           // Added (remaster): bright light fixtures feed bloom (r_fixtureBloom)
 uniform int u_pplNumGlow;               // glow lights: static lights at glowing surfaces
 uniform vec4 u_pplGlowPos[24];          // camera space xyz, w = radius
@@ -758,6 +759,11 @@ if (saberRgbEnabled != 0)
     );
 }
 
+    // Added (remaster): the screen tint (standing in toxic gas, underwater...), stdPalEffects_ApplyTint's
+    // maths (each channel x 1 + t - half the other two), set from the game's palette effects.
+    // The remaster path never applied it, so HD levels lost the warning. (The 1997 path is
+    // unchanged: checked side by side in the fuel station's gas.)
+    main_color.rgb *= u_screenTint;
     fragColor = main_color + effectAdd_color;// + color_add;
 
     color_add.a = orig_alpha;

@@ -37,7 +37,7 @@ void sithAtmos_GetHeightFog(float* pDensity, float* pGroundZ, float* pFalloff);
 #define SITHATMOS_MAX_SHADER_VOLUMES 16
 // The volumes nearest the camera (up to max), packed for the fog shader, 4 floats each:
 //   center xyz + shape (0 box, 1 ellipsoid); half size xyz + edge softness (0-1);
-//   cos and sin of the rotation about z, density, 0; tint rgb + 0. Returns how many.
+//   cos and sin of the rotation about z, density, 0; tint rgb + glow. Returns how many.
 int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize, float* pParams, float* pTint, int max);
 
 // Smoke and steam emitters (same JSON, "emitters" array). Particles are a function of time only

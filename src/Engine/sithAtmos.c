@@ -39,8 +39,9 @@ static int sithAtmos_bLoaded = 0;
 static sithAtmosLevel sithAtmos_aLevels[2];
 static sithAtmosGrid sithAtmos_aGrids[2];
 
-// Fog volumes from jkgm/atmos/<level>.json: center:3, size:3, rot_z:1, density:1, tint:3, soft:1, shape:1.
-#define VOL_STRIDE 13
+// Fog volumes from jkgm/atmos/<level>.json: center:3, size:3, rot_z:1, density:1, tint:3, soft:1, shape:1,
+// glow:1 (the volume's own light in its tint: toxic gas reads even in the dark).
+#define VOL_STRIDE 14
 #define VOL_MAX 256
 static float sithAtmos_aVolumes[VOL_MAX * VOL_STRIDE];
 static int sithAtmos_numVolumes = 0;
@@ -155,10 +156,10 @@ static void sithAtmos_LoadVolumes(const char* name)
     snprintf(path, sizeof(path), "jkgm/atmos/%s.json", name);
     for (int i = 0; i < VOL_MAX; i++) {
         float* v = &sithAtmos_aVolumes[i * VOL_STRIDE];
-        static const float def[VOL_STRIDE] = {0, 0, 0, 1, 1, 1, 0, 0.5f, 1, 1, 1, 0.3f, 0};
+        static const float def[VOL_STRIDE] = {0, 0, 0, 1, 1, 1, 0, 0.5f, 1, 1, 1, 0.3f, 0, 0};
         memcpy(v, def, sizeof(def));
     }
-    sithAtmos_numVolumes = stdJSON_ReadObjectArray(path, "volumes", "center:3,size:3,rot_z:1,density:1,tint:3,soft:1,shape:1",
+    sithAtmos_numVolumes = stdJSON_ReadObjectArray(path, "volumes", "center:3,size:3,rot_z:1,density:1,tint:3,soft:1,shape:1,glow:1",
                                                    sithAtmos_aVolumes, VOL_MAX);
     if (sithAtmos_numVolumes)
         stdPlatform_Printf("atmos: %d fog volumes from %s\n", sithAtmos_numVolumes, path);
@@ -190,7 +191,7 @@ int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize,
         pSize[k * 4 + 0] = fmaxf(v[3], 0.01f) * 0.5f; pSize[k * 4 + 1] = fmaxf(v[4], 0.01f) * 0.5f;
         pSize[k * 4 + 2] = fmaxf(v[5], 0.01f) * 0.5f; pSize[k * 4 + 3] = fminf(fmaxf(v[11], 0.01f), 1.0f);
         pParams[k * 4 + 0] = cosf(a); pParams[k * 4 + 1] = sinf(a); pParams[k * 4 + 2] = v[7]; pParams[k * 4 + 3] = 0.0f;
-        pTint[k * 4 + 0] = v[8]; pTint[k * 4 + 1] = v[9]; pTint[k * 4 + 2] = v[10]; pTint[k * 4 + 3] = 0.0f;
+        pTint[k * 4 + 0] = v[8]; pTint[k * 4 + 1] = v[9]; pTint[k * 4 + 2] = v[10]; pTint[k * 4 + 3] = v[13];
     }
     return n;
 }

@@ -30,6 +30,7 @@
 #include "Engine/sithSky.h" // Added (remaster)
 #include "Engine/sithAtmos.h" // Added (remaster): volumetric fog
 #include "General/stdString.h"
+#include "General/stdPalEffects.h" // Added (remaster): screen tint for true-colour textures
 
 #ifdef WIN32
 // Force Optimus/AMD to use non-integrated GPUs by default.
@@ -134,6 +135,16 @@ GLint attribute_coord3d, attribute_v_color, attribute_v_light, attribute_v_uv, a
 GLint attribute_v_invz = -1;
 static GLint uniform_ppl = -1, uniform_pplNumLights = -1, uniform_pplLightPos = -1, uniform_pplLightCol = -1;
 static GLint uniform_fixtureBloom = -1; // Added (remaster)
+static GLint uniform_screenTint = -1;   // Added (remaster)
+// The 1997 screen tint (toxic gas, water) as a per-channel multiplier: stdPalEffects_ApplyTint's
+// maths (each channel x 1 + t - half the other two), for true-colour textures and the fog.
+static void std3D_ScreenTintMul(float* out)
+{
+    float tr = stdPalEffects_state.effect.tint.x, tg = stdPalEffects_state.effect.tint.y, tb = stdPalEffects_state.effect.tint.z;
+    out[0] = fmaxf(0.0f, 1.0f + tr - 0.5f * (tg + tb));
+    out[1] = fmaxf(0.0f, 1.0f + tg - 0.5f * (tr + tb));
+    out[2] = fmaxf(0.0f, 1.0f + tb - 0.5f * (tr + tg));
+}
 static GLint uniform_pplAtten = -1, uniform_pplProj = -1, uniform_pplScreen = -1, uniform_pplSpecular = -1, uniform_pplWetness = -1;
 static GLint uniform_pplNumGlow = -1, uniform_pplGlowPos = -1, uniform_pplGlowCol = -1;
 static GLint uniform_ssrWrite = -1, uniform_pplUpCam = -1;
@@ -160,7 +171,7 @@ static GLint std3D_fogU[16];
 static float std3D_fogCamPos[3];
 enum { FOGU_FINE, FOGU_COARSE, FOGU_FORIGIN, FOGU_FSIZE, FOGU_CORIGIN, FOGU_CSIZE, FOGU_PROJ, FOGU_SCREEN,
        FOGU_WX, FOGU_WY, FOGU_WZ, FOGU_CAM, FOGU_FOG, FOGU_FOG2, FOGU_HFOG,
-       FOGU_NVOL, FOGU_VCENTER, FOGU_VSIZE, FOGU_VPARAMS, FOGU_VTINT };
+       FOGU_NVOL, FOGU_VCENTER, FOGU_VSIZE, FOGU_VPARAMS, FOGU_VTINT, FOGU_STINT };
 std3DSimpleTexStage std3D_shaftStage;
 static GLint std3D_shaftUniformNum = -1, std3D_shaftUniformPos = -1, std3D_shaftUniformCol = -1;
 // Added (remaster): volumetric sky (sithSky.c, sky_f.glsl). The cloud panorama is refreshed a
@@ -675,8 +686,8 @@ int init_resources()
     {
         static const char* names[] = {"u_fine", "u_coarse", "u_fineOrigin", "u_fineSize", "u_coarseOrigin", "u_coarseSize",
                                       "u_proj", "u_screen", "u_WX", "u_WY", "u_WZ", "u_camPos", "u_fog", "u_fog2", "u_hfog",
-                                      "u_numVols", "u_volCenter", "u_volSize", "u_volParams", "u_volTint"};
-        for (int k = 0; k < 20; k++) std3D_fogU[k] = std3D_tryFindUniform(std3D_fogStage.program, names[k]);
+                                      "u_numVols", "u_volCenter", "u_volSize", "u_volParams", "u_volTint", "u_screenTint"};
+        for (int k = 0; k < 21; k++) std3D_fogU[k] = std3D_tryFindUniform(std3D_fogStage.program, names[k]);
     }
     else std3D_fogStage.program = 0;
     if (!std3D_loadSimpleTexProgram("shaders/flare", &std3D_flareStage)) std3D_flareStage.program = 0; // Added (remaster)
@@ -719,6 +730,7 @@ int init_resources()
     uniform_pplScreen = std3D_tryFindUniform(programDefault, "u_pplScreen");
     uniform_pplSpecular = std3D_tryFindUniform(programDefault, "u_pplSpecular");
     uniform_fixtureBloom = std3D_tryFindUniform(programDefault, "u_fixtureBloom");
+    uniform_screenTint = std3D_tryFindUniform(programDefault, "u_screenTint");
     uniform_pplWetness = std3D_tryFindUniform(programDefault, "u_pplWetness");
     uniform_pplNumGlow = std3D_tryFindUniform(programDefault, "u_pplNumGlow");
     uniform_pplGlowPos = std3D_tryFindUniform(programDefault, "u_pplGlowPos");
@@ -3346,6 +3358,7 @@ void std3D_DrawSceneFbo()
                 float vp[SITHATMOS_MAX_SHADER_VOLUMES * 4], vt[SITHATMOS_MAX_SHADER_VOLUMES * 4];
                 int nv = jkPlayer_fogVolumes ? sithAtmos_GetVolumes(&cam, vc, vs, vp, vt, SITHATMOS_MAX_SHADER_VOLUMES) : 0;
                 glUniform1i(std3D_fogU[FOGU_NVOL], nv);
+                { float m[3]; std3D_ScreenTintMul(m); glUniform3fv(std3D_fogU[FOGU_STINT], 1, m); } // the screen tint, on the fog too
                 if (nv) {
                     glUniform4fv(std3D_fogU[FOGU_VCENTER], nv, vc);
                     glUniform4fv(std3D_fogU[FOGU_VSIZE], nv, vs);
@@ -3828,6 +3841,7 @@ void std3D_DrawRenderList()
             glUniform4f(uniform_pplScreen, internalWidth, internalHeight, width, height);
             glUniform1f(uniform_pplSpecular, jkPlayer_specular);
             glUniform1f(uniform_fixtureBloom, jkPlayer_enableBloom ? jkPlayer_fixtureBloom : 0.0f); // Added (remaster)
+            { float m[3]; std3D_ScreenTintMul(m); glUniform3fv(uniform_screenTint, 1, m); } // Added (remaster): screen tint
 
             // Added (remaster): world up in camera space (floors reflect most), and the values
             // the reflection pass needs later in the frame.
@@ -3933,6 +3947,7 @@ void std3D_DrawRenderList()
 #endif
 
     glUniform3f(uniform_tint, rdroid_curColorEffects.tint.x, rdroid_curColorEffects.tint.y, rdroid_curColorEffects.tint.z);
+    { float m[3]; std3D_ScreenTintMul(m); glUniform3fv(uniform_screenTint, 1, m); } // Added (remaster): screen tint (set with the game's own colour effects)
     if (rdroid_curColorEffects.filter.x || rdroid_curColorEffects.filter.y || rdroid_curColorEffects.filter.z)
         glUniform3f(uniform_filter, rdroid_curColorEffects.filter.x ? 1.0 : 0.25, rdroid_curColorEffects.filter.y ? 1.0 : 0.25, rdroid_curColorEffects.filter.z ? 1.0 : 0.25);
     else

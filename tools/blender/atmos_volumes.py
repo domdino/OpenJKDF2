@@ -134,6 +134,8 @@ def load_level(level):
             make_volume(v.get("name", "fog %d" % i), int(v.get("shape", 0)), v.get("center", [0, 0, 0]),
                         v.get("size", [1, 1, 1]), v.get("rot_z", 0.0), v.get("density", 0.5),
                         v.get("tint", [1, 1, 1]), v.get("soft", 0.3))
+            if v.get("glow"):
+                bpy.data.objects[v.get("name", "fog %d" % i)]["jk_glow"] = v["glow"]   # kept for export
             n += 1
         for i, v in enumerate(json.load(open(path)).get("emitters", [])):
             make_emitter(v.get("name", "emitter %d" % i), int(v.get("kind", 0)), v.get("center", [0, 0, 0]),
@@ -162,6 +164,7 @@ def export_level(level):
             "density": round(o.jk_fog_density, 4),
             "tint": [round(x, 4) for x in o.jk_fog_tint],
             "soft": round(o.jk_fog_soft, 3),
+            "glow": round(o.get("jk_glow", 0.0), 4),
         })
     emits = []
     for o in bpy.data.objects:

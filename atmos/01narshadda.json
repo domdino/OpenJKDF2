@@ -1,0 +1,81 @@
+{
+  "level": "01narshadda",
+  "volumes": [],
+  "emitters": [
+    {
+      "kind": 0,
+      "rate": 7,
+      "life": 3.5,
+      "size": 0.04,
+      "grow": 5.0,
+      "rise": 0.1,
+      "spread": 0.02,
+      "tint": [
+        1,
+        1,
+        1
+      ],
+      "opacity": 0.55,
+      "drift": [
+        0.0,
+        0.0
+      ],
+      "name": "auto: roofvent3 steam",
+      "center": [
+        -5.400454,
+        -4.196697,
+        -0.36623100000000003
+      ]
+    },
+    {
+      "kind": 0,
+      "rate": 7,
+      "life": 3.5,
+      "size": 0.04,
+      "grow": 5.0,
+      "rise": 0.1,
+      "spread": 0.02,
+      "tint": [
+        1,
+        1,
+        1
+      ],
+      "opacity": 0.55,
+      "drift": [
+        0.0,
+        0.0
+      ],
+      "name": "auto: roofvent2 steam",
+      "center": [
+        -7.008705,
+        -4.134493,
+        -0.340025
+      ]
+    },
+    {
+      "kind": 0,
+      "rate": 7,
+      "life": 3.5,
+      "size": 0.04,
+      "grow": 5.0,
+      "rise": 0.1,
+      "spread": 0.02,
+      "tint": [
+        1,
+        1,
+        1
+      ],
+      "opacity": 0.55,
+      "drift": [
+        0.0,
+        0.0
+      ],
+      "name": "auto: roofvent2 steam",
+      "center": [
+        -6.991295,
+        -4.465507,
+        -0.340025
+      ]
+    }
+  ]
+}

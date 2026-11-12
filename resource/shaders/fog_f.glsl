@@ -25,7 +25,8 @@ uniform int u_numVols;        // hand-placed fog volumes (sithAtmos_GetVolumes)
 uniform vec4 u_volCenter[16]; // xyz, shape (0 box, 1 ellipsoid)
 uniform vec4 u_volSize[16];   // half size xyz, edge softness
 uniform vec4 u_volParams[16]; // cos, sin of rotation about z, density
-uniform vec4 u_volTint[16];   // rgb
+uniform vec4 u_volTint[16];   // rgb, glow (the volume's own light)
+uniform vec3 u_screenTint;    // the 1997 screen tint as a colour multiplier (gas, water)
 uniform vec4 u_hfog;          // height fog: density at the ground, ground height (world z), falloff (units)
 uniform vec2 iResolution;
 uniform float param1;
@@ -82,7 +83,7 @@ vec3 airLightRaw(vec3 P)
 }
 
 // Fog volumes at P: total density, and density-weighted tint (in .rgb of tintSum).
-float volumes(vec3 P, inout vec3 tintSum)
+float volumes(vec3 P, inout vec3 tintSum, inout vec3 glowSum)
 {
     float dens = 0.0;
     for (int v = 0; v < 16; v++) {
@@ -97,6 +98,7 @@ float volumes(vec3 P, inout vec3 tintSum)
         float dv = u_volParams[v].z * w;
         dens += dv;
         tintSum += u_volTint[v].rgb * dv;
+        glowSum += u_volTint[v].rgb * u_volTint[v].w * dv;
     }
     return dens;
 }
@@ -134,10 +136,12 @@ void main(void)
         float nf = max(0.0, 1.0 + u_fog2.x * (n * 2.0 - 1.0));
         float plain = u_fog.x + heightFog(P.z);
         vec3 tintSum = vec3(plain);
-        float dens = (plain + volumes(P, tintSum)) * nf;
-        vec3 albedo = tintSum / max(dens / max(nf, 1e-4), 1e-5);
+        vec3 glowSum = vec3(0.0);
+        float dens = (plain + volumes(P, tintSum, glowSum)) * nf;
+        float rawDens = max(dens / max(nf, 1e-4), 1e-5);
+        vec3 albedo = tintSum / rawDens;
         float tr = exp(-dens * ds);
-        scat += T * airLight(P) * albedo * (1.0 - tr);
+        scat += T * (airLight(P) * albedo + glowSum / rawDens) * (1.0 - tr);
         T *= tr;
     }
     // Past the march: the rest of the way to far surfaces (up to 200 units) with the air at the
@@ -151,5 +155,5 @@ void main(void)
         scat += T * airLight(endW) * (1.0 - tr);
         T *= tr;
     }
-    fragColor = vec4(scat * u_fog.y, T);
+    fragColor = vec4(scat * u_fog.y * u_screenTint, T);
 }

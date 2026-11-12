@@ -26,6 +26,7 @@
 #include "Platform/GL/jkgm.h"
 
 #include "SDL2_helper.h"
+#include "Engine/sithSky.h" // Added (remaster)
 #include "General/stdString.h"
 
 #ifdef WIN32
@@ -43,6 +44,7 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 // Added: Custom RGB lightsaber triangle marker.
 #define RD_TRI_FLAG_SABER_RGB 0x40000
 #define RD_TRI_FLAG_SABER_BLADE 0x80000 // Added (remaster): procedural lightsaber blade (rdCache)
+#define RD_TRI_FLAG_SKY 0x100000        // Added (remaster): volumetric sky surface (rdCache)
 
 typedef struct std3DSimpleTexStage
 {
@@ -145,6 +147,22 @@ static int std3D_ssrHaveCamera = 0;
 std3DSimpleTexStage std3D_hazeStage;
 std3DSimpleTexStage std3D_shaftStage;
 static GLint std3D_shaftUniformNum = -1, std3D_shaftUniformPos = -1, std3D_shaftUniformCol = -1;
+// Added (remaster): volumetric sky (sithSky.c, sky_f.glsl). The cloud panorama is refreshed a
+// slice of columns per frame at frame start; sky surfaces sample it on texture unit 7.
+#define STD3D_SKY_PANO_W 4096
+#define STD3D_SKY_PANO_H 1024
+#define STD3D_SKY_SLICES 8
+std3DSimpleTexStage std3D_skyStage;
+static std3DIntermediateFbo std3D_skyPano;
+static int std3D_skyPanoReady = 0, std3D_skySlice = 0, std3D_skyFilled = 0;
+static const sithSkyPreset* std3D_skyPanoPreset = NULL;
+static GLuint std3D_skyShapeTex = 0, std3D_skyDetailTex = 0;
+static GLint std3D_skyU_shape = -1, std3D_skyU_detail = -1, std3D_skyU_sunDir = -1, std3D_skyU_sunCol = -1;
+static GLint std3D_skyU_ambTop = -1, std3D_skyU_ambBottom = -1, std3D_skyU_horizon = -1, std3D_skyU_layer = -1, std3D_skyU_wind = -1;
+static GLint uniform_sky = -1, uniform_skyPano = -1, uniform_skyWX = -1, uniform_skyWY = -1, uniform_skyWZ = -1;
+static GLint uniform_skySunDir = -1, uniform_skySunCol = -1, uniform_skyZenith = -1, uniform_skyHorizon = -1;
+static GLint uniform_skyBelow = -1, uniform_skyFlash = -1;
+static float std3D_skyWorldAxes[9]; // world X, Y, Z axes in camera space (last world draw)
 static int std3D_frameNumGlow = 0;
 static float std3D_frameGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], std3D_frameGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
 GLint uniform_mvp, uniform_tex, uniform_texEmiss, uniform_displacement_map, uniform_tex_mode, uniform_blend_mode, uniform_worldPalette, uniform_worldPaletteLights;
@@ -635,6 +653,17 @@ int init_resources()
     std3D_shaftUniformNum = std3D_tryFindUniform(std3D_shaftStage.program, "u_numShafts");
     std3D_shaftUniformPos = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftPos");
     std3D_shaftUniformCol = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftCol");
+    // Added (remaster): volumetric sky panorama
+    if (!std3D_loadSimpleTexProgram("shaders/sky", &std3D_skyStage)) return false;
+    std3D_skyU_shape = std3D_tryFindUniform(std3D_skyStage.program, "u_shape");
+    std3D_skyU_detail = std3D_tryFindUniform(std3D_skyStage.program, "u_detail");
+    std3D_skyU_sunDir = std3D_tryFindUniform(std3D_skyStage.program, "u_sunDir");
+    std3D_skyU_sunCol = std3D_tryFindUniform(std3D_skyStage.program, "u_sunCol");
+    std3D_skyU_ambTop = std3D_tryFindUniform(std3D_skyStage.program, "u_ambTop");
+    std3D_skyU_ambBottom = std3D_tryFindUniform(std3D_skyStage.program, "u_ambBottom");
+    std3D_skyU_horizon = std3D_tryFindUniform(std3D_skyStage.program, "u_horizon");
+    std3D_skyU_layer = std3D_tryFindUniform(std3D_skyStage.program, "u_layer");
+    std3D_skyU_wind = std3D_tryFindUniform(std3D_skyStage.program, "u_wind");
 
     // Attributes/uniforms
     attribute_coord3d = std3D_tryFindAttribute(programDefault, "coord3d");
@@ -684,6 +713,17 @@ int init_resources()
     );
 
     uniform_saberBlade = std3D_tryFindUniform(programDefault, "saberBlade");
+    uniform_sky = std3D_tryFindUniform(programDefault, "u_sky"); // Added (remaster): volumetric sky
+    uniform_skyPano = std3D_tryFindUniform(programDefault, "u_skyPano");
+    uniform_skyWX = std3D_tryFindUniform(programDefault, "u_skyWX");
+    uniform_skyWY = std3D_tryFindUniform(programDefault, "u_skyWY");
+    uniform_skyWZ = std3D_tryFindUniform(programDefault, "u_skyWZ");
+    uniform_skySunDir = std3D_tryFindUniform(programDefault, "u_skySunDir");
+    uniform_skySunCol = std3D_tryFindUniform(programDefault, "u_skySunCol");
+    uniform_skyZenith = std3D_tryFindUniform(programDefault, "u_skyZenith");
+    uniform_skyHorizon = std3D_tryFindUniform(programDefault, "u_skyHorizon");
+    uniform_skyBelow = std3D_tryFindUniform(programDefault, "u_skyBelowExp");
+    uniform_skyFlash = std3D_tryFindUniform(programDefault, "u_skyFlash");
     uniform_saberStrength = std3D_tryFindUniform(programDefault, "saberStrength");
     uniform_time = std3D_tryFindUniform(programDefault, "u_time");
     uniform_saberRgbColor = std3D_tryFindUniform(
@@ -965,6 +1005,126 @@ void std3D_FreeResources()
     has_initted = false;
 }
 
+// Added (remaster): volumetric sky. Builds the noise textures and panorama target on first
+// use, then raymarches one slice of panorama columns (all of them on a new level).
+static GLuint std3D_SkyMake3D(const uint8_t* pData, int n)
+{
+    GLuint t = 0;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_3D, t);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, n, n, n, 0, GL_RGBA, GL_UNSIGNED_BYTE, pData);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+    glGenerateMipmap(GL_TEXTURE_3D);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    return t;
+}
+
+void std3D_DrawSimpleTex(std3DSimpleTexStage* pStage, std3DIntermediateFbo* pFbo, GLuint texId, GLuint texId2, GLuint texId3, flex_t param1, flex_t param2, flex_t param3, int gen_mips);
+
+static void std3D_SkyUpdatePanorama(void)
+{
+    const sithSkyPreset* p = sithSky_GetActive();
+    if (!p || !std3D_skyStage.program || jkGuiBuildMulti_bRendering) return;
+    if (!std3D_skyShapeTex)
+    {
+        int n = 0;
+        const uint8_t* d = sithSky_GetShapeNoise(&n);
+        if (!d) return;
+        std3D_skyShapeTex = std3D_SkyMake3D(d, n);
+        d = sithSky_GetDetailNoise(&n);
+        if (d) std3D_skyDetailTex = std3D_SkyMake3D(d, n);
+    }
+    if (!std3D_skyPanoReady)
+    {
+        std3D_generateIntermediateFbo(STD3D_SKY_PANO_W, STD3D_SKY_PANO_H, &std3D_skyPano, 1);
+        glBindTexture(GL_TEXTURE_2D, std3D_skyPano.tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        std3D_skyPanoReady = 1;
+    }
+    if (p != std3D_skyPanoPreset) { std3D_skyPanoPreset = p; std3D_skyFilled = 0; }
+
+    float sun[3];
+    sithSky_GetSunDir(p, sun);
+    double t = (double)SDL_GetTicksNS() / 1e9;
+    glUseProgram(std3D_skyStage.program);
+    glUniform1i(std3D_skyU_shape, 3);
+    glUniform1i(std3D_skyU_detail, 4);
+    glUniform3fv(std3D_skyU_sunDir, 1, sun);
+    glUniform3f(std3D_skyU_sunCol, p->sunColor[0] * p->sunIntensity, p->sunColor[1] * p->sunIntensity, p->sunColor[2] * p->sunIntensity);
+    glUniform3fv(std3D_skyU_ambTop, 1, p->ambientTop);
+    glUniform3fv(std3D_skyU_ambBottom, 1, p->ambientBottom);
+    glUniform3fv(std3D_skyU_horizon, 1, p->horizon);
+    glUniform4f(std3D_skyU_layer, p->cloudBase, p->cloudTop, sithSky_GetCoverage(p), p->density);
+    glUniform2f(std3D_skyU_wind, (float)fmod(t * p->wind, 360.0), (float)fmod(t * p->wind * 0.35, 360.0));
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_3D, std3D_skyShapeTex);
+    glActiveTexture(GL_TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_3D, std3D_skyDetailTex);
+    glActiveTexture(GL_TEXTURE0);
+
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    // The whole panorama on a new level/preset, otherwise one slice of columns per frame.
+    if (std3D_skyFilled)
+    {
+        int w = STD3D_SKY_PANO_W / STD3D_SKY_SLICES;
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(std3D_skySlice * w, 0, w, STD3D_SKY_PANO_H);
+        std3D_skySlice = (std3D_skySlice + 1) % STD3D_SKY_SLICES;
+    }
+    std3D_DrawSimpleTex(&std3D_skyStage, &std3D_skyPano, blank_tex, 0, 0, (float)fmod(t, 3600.0), 0.0, 0.0, 0);
+    glDisable(GL_SCISSOR_TEST);
+    {
+        // Debug: OPENJKDF2_SKY_DEBUG=1 prints the panorama's value range after the first fill.
+        static int dbg = -1;
+        if (dbg < 0) { const char* e = getenv("OPENJKDF2_SKY_DEBUG"); dbg = (e && e[0] == '1'); }
+        if (dbg && !std3D_skyFilled) {
+            static float px[STD3D_SKY_PANO_W * 4];
+            glBindFramebuffer(GL_FRAMEBUFFER, std3D_skyPano.fbo);
+            for (int row = 0; row < STD3D_SKY_PANO_H; row += STD3D_SKY_PANO_H / 8) {
+                glReadPixels(0, row, STD3D_SKY_PANO_W, 1, GL_RGBA, GL_FLOAT, px);
+                float mn[4] = {1e9, 1e9, 1e9, 1e9}, mx[4] = {-1e9, -1e9, -1e9, -1e9}, meanT = 0.0f;
+                for (int i = 0; i < STD3D_SKY_PANO_W; i++) { meanT += px[i*4+3]; for (int c = 0; c < 4; c++) {
+                    float v = px[i*4+c]; if (v < mn[c]) mn[c] = v; if (v > mx[c]) mx[c] = v; } }
+                stdPlatform_Printf("sky pano row %4d: r %.3f..%.3f g %.3f..%.3f b %.3f..%.3f T %.3f..%.3f mean %.2f\n", row, mn[0], mx[0], mn[1], mx[1], mn[2], mx[2], mn[3], mx[3], meanT / STD3D_SKY_PANO_W);
+            }
+            // OPENJKDF2_SKY_DUMP=path.ppm: the whole panorama (clouds over black, x exposure).
+            const char* dump = getenv("OPENJKDF2_SKY_DUMP");
+            FILE* f = dump ? fopen(dump, "wb") : NULL;
+            if (f) {
+                fprintf(f, "P6\n%d %d\n255\n", STD3D_SKY_PANO_W / 2, STD3D_SKY_PANO_H / 2);
+                static float rowpx[STD3D_SKY_PANO_W * 4];
+                static unsigned char out[STD3D_SKY_PANO_W / 2 * 3];
+                for (int row = STD3D_SKY_PANO_H - 2; row >= 0; row -= 2) {
+                    glReadPixels(0, row, STD3D_SKY_PANO_W, 1, GL_RGBA, GL_FLOAT, rowpx);
+                    for (int i = 0; i < STD3D_SKY_PANO_W / 2; i++) for (int c = 0; c < 3; c++) {
+                        float v = rowpx[i*8+c] * p->exposure + 0.25f * rowpx[i*8+3]; // clear sky shows as dark grey
+                        v = v / (1.0f + v);
+                        out[i*3+c] = (unsigned char)(v * 255.0f);
+                    }
+                    fwrite(out, 1, sizeof(out), f);
+                }
+                fclose(f);
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+    }
+    std3D_skyFilled = 1;
+
+    glActiveTexture(GL_TEXTURE0 + 3);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    glActiveTexture(GL_TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    glActiveTexture(GL_TEXTURE0);
+}
+
 int std3D_StartScene()
 {
     if (Main_bHeadless) return 1;
@@ -1008,6 +1168,8 @@ int std3D_StartScene()
         std3D_deleteFramebuffer(std3D_pFb);
         std3D_generateFramebuffer(tex_w, tex_h, std3D_pFb);
     }
+
+    std3D_SkyUpdatePanorama(); // Added (remaster): volumetric sky, before the scene is bound
 
     glBindFramebuffer(GL_FRAMEBUFFER, std3D_pFb->fbo);
     std3D_SetSceneDrawBuffers(); // so the clear below covers tex2-3 when SSAO was just turned on
@@ -2970,7 +3132,7 @@ void std3D_DrawSceneFbo()
     }
 
     // Added (remaster): light shafts streaming from the strongest glow lights on screen.
-    if (jkPlayer_bLightShafts && std3D_AtmosphereActive() && std3D_ssrHaveCamera && std3D_shaftStage.program && std3D_frameNumGlow > 0)
+    if (jkPlayer_bLightShafts && std3D_AtmosphereActive() && std3D_ssrHaveCamera && std3D_shaftStage.program && (std3D_frameNumGlow > 0 || sithSky_GetActive()))
     {
         // Pick up to 4: in front of the camera, near the screen, brightest and closest first.
         float aPos[16], aCol[16], aScore[4];
@@ -2994,6 +3156,29 @@ void std3D_DrawSceneFbo()
             aPos[slot*4+0] = u; aPos[slot*4+1] = v; aPos[slot*4+2] = std3D_frameGlowCol[i*4+3]; aPos[slot*4+3] = 0.0f;
             aCol[slot*4+0] = std3D_frameGlowCol[i*4+0]; aCol[slot*4+1] = std3D_frameGlowCol[i*4+1];
             aCol[slot*4+2] = std3D_frameGlowCol[i*4+2]; aCol[slot*4+3] = 1.0f;
+        }
+        // Added (remaster): the volumetric sky's sun/moon, when it's in front of the camera.
+        const sithSkyPreset* sp = sithSky_GetActive();
+        if (sp && n < 4)
+        {
+            float sun[3];
+            sithSky_GetSunDir(sp, sun);
+            const float* A = std3D_skyWorldAxes;
+            float x = sun[0]*A[0] + sun[1]*A[3] + sun[2]*A[6];
+            float y = sun[0]*A[1] + sun[1]*A[4] + sun[2]*A[7];
+            float z = sun[0]*A[2] + sun[1]*A[5] + sun[2]*A[8];
+            if (y > 0.05f)
+            {
+                float cx = std3D_ssrProj[0] + x * std3D_ssrProj[2] / y;
+                float cy = std3D_ssrProj[1] - z * std3D_ssrProj[2] / y;
+                float u = cx / std3D_ssrScreen[0], v = 1.0f - cy / std3D_ssrScreen[1];
+                if (u > -0.6f && u < 1.6f && v > -0.6f && v < 1.6f)
+                {
+                    aPos[n*4+0] = u; aPos[n*4+1] = v; aPos[n*4+2] = 1.0f; aPos[n*4+3] = 1.0f;
+                    aCol[n*4+0] = sp->sunColor[0]; aCol[n*4+1] = sp->sunColor[1]; aCol[n*4+2] = sp->sunColor[2]; aCol[n*4+3] = 1.0f;
+                    n++;
+                }
+            }
         }
         if (n)
         {
@@ -3340,6 +3525,34 @@ void std3D_DrawRenderList()
                 std3D_ssrScreen[0] = internalWidth; std3D_ssrScreen[1] = internalHeight;
                 std3D_ssrScreen[2] = width; std3D_ssrScreen[3] = height;
                 std3D_ssrHaveCamera = 1;
+
+                // Added (remaster): volumetric sky. World axes in camera space turn each sky
+                // pixel's view ray into a world direction.
+                rdVector3 ax[3] = {{1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}};
+                for (int k = 0; k < 3; k++) {
+                    rdVector3 o;
+                    rdMatrix_TransformVector34(&o, &ax[k], &rdCamera_g_pCurCamera->orient);
+                    std3D_skyWorldAxes[k*3+0] = o.x; std3D_skyWorldAxes[k*3+1] = o.y; std3D_skyWorldAxes[k*3+2] = o.z;
+                }
+                const sithSkyPreset* sp = sithSky_GetActive();
+                if (sp && std3D_skyPanoReady) {
+                    float sun[3], fdir[3];
+                    sithSky_GetSunDir(sp, sun);
+                    float flash = sithSky_GetFlash(sp, (double)SDL_GetTicksNS() / 1e9, fdir);
+                    glUniform3fv(uniform_skyWX, 1, &std3D_skyWorldAxes[0]);
+                    glUniform3fv(uniform_skyWY, 1, &std3D_skyWorldAxes[3]);
+                    glUniform3fv(uniform_skyWZ, 1, &std3D_skyWorldAxes[6]);
+                    glUniform3fv(uniform_skySunDir, 1, sun);
+                    glUniform3f(uniform_skySunCol, sp->sunColor[0] * sp->sunIntensity, sp->sunColor[1] * sp->sunIntensity, sp->sunColor[2] * sp->sunIntensity);
+                    glUniform4f(uniform_skyZenith, sp->zenith[0], sp->zenith[1], sp->zenith[2], sp->stars);
+                    glUniform4f(uniform_skyHorizon, sp->horizon[0], sp->horizon[1], sp->horizon[2], sp->sunSize * 0.0174533f);
+                    glUniform4f(uniform_skyBelow, sp->below[0], sp->below[1], sp->below[2], sp->exposure);
+                    glUniform4f(uniform_skyFlash, fdir[0], fdir[1], fdir[2], flash);
+                    glUniform1i(uniform_skyPano, 7);
+                    glActiveTexture(GL_TEXTURE0 + 7);
+                    glBindTexture(GL_TEXTURE_2D, std3D_skyPano.tex);
+                    glActiveTexture(GL_TEXTURE0);
+                }
             }
             glUniform1f(uniform_pplWetness, jkPlayer_wetness);
 
@@ -3425,6 +3638,7 @@ void std3D_DrawRenderList()
     );
     // Added (remaster): procedural saber blades, and time for their plasma
     glUniform1i(uniform_saberBlade, (last_flags & RD_TRI_FLAG_SABER_BLADE) ? 1 : 0);
+    glUniform1i(uniform_sky, (last_flags & RD_TRI_FLAG_SKY) ? 1 : 0); // Added (remaster)
     glUniform1f(uniform_saberStrength, jkPlayer_saberGlowStrength);
     glUniform1f(uniform_time, (float)((double)SDL_GetTicksNS() / 1e9));
 
@@ -3504,6 +3718,8 @@ void std3D_DrawRenderList()
 
             if (changed_flags & RD_TRI_FLAG_SABER_BLADE) // Added (remaster)
                 glUniform1i(uniform_saberBlade, (tris[j].flags & RD_TRI_FLAG_SABER_BLADE) ? 1 : 0);
+            if (changed_flags & RD_TRI_FLAG_SKY) // Added (remaster)
+                glUniform1i(uniform_sky, (tris[j].flags & RD_TRI_FLAG_SKY) ? 1 : 0);
 
             // Added: Switch RGB override when entering or leaving a saber batch.
             if (changed_flags & RD_TRI_FLAG_SABER_RGB)

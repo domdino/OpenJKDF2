@@ -82,6 +82,10 @@ int jkPlayer_anisotropy = 8;                                // Added (remaster):
 flex_t jkPlayer_reflectionRoughness = 0.5;                  // Added (remaster)
 int jkPlayer_bSaberGlow = 1;                                 // Added (remaster): procedural glowing blades
 flex_t jkPlayer_saberGlowSize = 1.0;                        // Added (remaster)
+int jkPlayer_bVolumetricSky = 1;                            // Added (remaster): raymarched cloud sky (sithSky)
+flex_t jkPlayer_skyCoverage = -1.0;                         // Added (remaster): <0 = the level's preset
+flex_t jkPlayer_skySunAzimuth = -999.0;                     // Added (remaster): degrees, <-360 = preset
+flex_t jkPlayer_skySunElevation = -999.0;                   // Added (remaster): degrees, <-90 = preset
 flex_t jkPlayer_saberGlowStrength = 1.0;                    // Added (remaster)
 int jkPlayer_bSaberTrails = 1;                              // Added (remaster): swing trails
 int jkPlayer_bAutoRenderScale = 1;                          // Added (remaster): render scale for huge displays
@@ -245,6 +249,12 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_saberGlowSize",            1.0,                        &jkPlayer_saberGlowSize,            CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_saberGlowStrength",        1.0,                        &jkPlayer_saberGlowStrength,        CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_saberTrails",              1,                          &jkPlayer_bSaberTrails,             CVARFLAG_LOCAL);
+    // Volumetric cloud sky in place of the 1997 sky textures, on levels with a sky preset
+    // (sithSky.c). Needs r_perPixelLighting. Coverage and sun/moon direction can be overridden live.
+    sithCvar_RegisterBool("r_volumetricSky",            1,                          &jkPlayer_bVolumetricSky,           CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_skyCoverage",              -1.0,                       &jkPlayer_skyCoverage,              CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_skySunAzimuth",            -999.0,                     &jkPlayer_skySunAzimuth,            CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_skySunElevation",          -999.0,                     &jkPlayer_skySunElevation,          CVARFLAG_LOCAL);
     // Very large displays (over ~14 megapixels) render the 3D scene scaled down to that budget.
     sithCvar_RegisterBool("r_autoRenderScale",          1,                          &jkPlayer_bAutoRenderScale,         CVARFLAG_LOCAL);
     // Play HD replacement cutscenes from hdvideo/<name>.mov|mp4|m4v when they exist (macOS).
@@ -726,6 +736,7 @@ void jkPlayer_WriteConf(char16_t *name)
         stdJSON_SaveFloat(ext_fpath, "saberglowsize", jkPlayer_saberGlowSize);
         stdJSON_SaveFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
         stdJSON_SaveBool(ext_fpath, "sabertrails", jkPlayer_bSaberTrails);
+        stdJSON_SaveBool(ext_fpath, "volumetricsky", jkPlayer_bVolumetricSky);
         stdJSON_SaveBool(ext_fpath, "autorenderscale", jkPlayer_bAutoRenderScale);
         stdJSON_SaveInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         stdJSON_SaveFloat(ext_fpath, "gamma", jkPlayer_gamma);
@@ -955,6 +966,7 @@ int jkPlayer_ReadConf(char16_t *name)
         jkPlayer_saberGlowSize = stdJSON_GetFloat(ext_fpath, "saberglowsize", jkPlayer_saberGlowSize);
         jkPlayer_saberGlowStrength = stdJSON_GetFloat(ext_fpath, "saberglowstrength", jkPlayer_saberGlowStrength);
         jkPlayer_bSaberTrails = stdJSON_GetBool(ext_fpath, "sabertrails", jkPlayer_bSaberTrails);
+        jkPlayer_bVolumetricSky = stdJSON_GetBool(ext_fpath, "volumetricsky", jkPlayer_bVolumetricSky);
         jkPlayer_bAutoRenderScale = stdJSON_GetBool(ext_fpath, "autorenderscale", jkPlayer_bAutoRenderScale);
         jkPlayer_enableSSAO = stdJSON_GetInt(ext_fpath, "enablessao", jkPlayer_enableSSAO);
         jkPlayer_gamma = stdJSON_GetFloat(ext_fpath, "gamma", jkPlayer_gamma);

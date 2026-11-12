@@ -15,6 +15,8 @@
 #define RD_PROC_FLAG_SABER_BLADE 0x20000000u // Added (remaster): procedural lightsaber blade
 #define RD_TRI_FLAG_SABER_BLADE 0x80000
 #define RD_TRI_FLAG_SABER_RGB  0x40000
+#define RD_PROC_FLAG_SKY 0x10000000u // Added (remaster): volumetric sky surface (sithRender)
+#define RD_TRI_FLAG_SKY 0x100000
 
 #ifdef RDCACHE_RENDER_LINES
 static int rdCache_totalLines = 0;
@@ -392,7 +394,7 @@ int rdCache_SendFaceListToHardware()
 
         // Added: We need to know if a face is flex_d_t-sided
         if ((active_6c->type & RD_FF_DOUBLE_SIDED) &&
-            (active_6c->light_flags & ~(RD_PROC_FLAG_SABER_RGB | RD_PROC_FLAG_SABER_BLADE)))
+            (active_6c->light_flags & ~(RD_PROC_FLAG_SABER_RGB | RD_PROC_FLAG_SABER_BLADE | RD_PROC_FLAG_SKY)))
         {
             flags_idk_ |= 0x10000;
         }
@@ -667,6 +669,8 @@ int rdCache_SendFaceListToHardware()
         // Added (remaster): procedural lightsaber blade (rdPolyline): additive (premultiplied
         // translucent path, alpha 0), depth-tested, no depth write; colour and raw blade-space
         // UVs are set per vertex below.
+        if (active_6c->light_flags & RD_PROC_FLAG_SKY) // Added (remaster): drawn by the volumetric sky shader
+            flags_idk_ |= RD_TRI_FLAG_SKY;
         int bSaberBlade = (active_6c->light_flags & RD_PROC_FLAG_SABER_BLADE) != 0;
         if (bSaberBlade) {
             flags_idk_ |= RD_TRI_FLAG_SABER_BLADE | 0x400 | 0x800;

@@ -19,6 +19,11 @@ out vec4 fragColor;
 void main(void)
 {
     vec4 d = texture(tex2, f_uv);
+    // The volumetric sky (z = -1000 marker) has its own aerial perspective: only a light veil.
+    if (d.a > 0.5 && d.z < -500.0) {
+        fragColor = vec4(vec3(0.020, 0.021, 0.024) + texture(tex, f_uv).rgb * 1.6, 0.12 * param2);
+        return;
+    }
     // Nothing drawn here (open void): treat as far away.
     float depth = (d.a > 0.5) ? abs(d.z) : 40.0;
 

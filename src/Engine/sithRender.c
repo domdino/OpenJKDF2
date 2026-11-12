@@ -34,6 +34,8 @@
 #include "Platform/std3D.h"
 #include "Primitives/rdMath.h"
 #include "stdPlatform.h"
+#include "Engine/sithSky.h" // Added (remaster)
+#define RD_PROC_FLAG_SKY 0x10000000u // Added (remaster): volumetric sky surface (rdCache, std3D)
 
 #if defined(TARGET_TWL)
 #include <nds.h>
@@ -2276,6 +2278,9 @@ void sithRender_RenderSectors()
                 procEntry->material = v58;
                 v59 = procEntry->geometryMode;
                 procEntry->light_flags = 0;
+                // Added (remaster): volumetric sky replaces this level's sky texture (sithSky).
+                if (UNLIKELY(flags & (SITH_SURFACE_HORIZON_SKY | SITH_SURFACE_CEILING_SKY)) && sithSky_GetActive())
+                    procEntry->light_flags |= RD_PROC_FLAG_SKY;
                 procEntry->type = v57;
                 rend_flags = 1;
                 if ( v59 >= 4 )

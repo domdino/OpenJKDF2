@@ -244,6 +244,92 @@ void saberBladeMain()
     fragColorMat = vec4(0.0);
 }
 
+// Added (remaster): volumetric sky. Sky surfaces (sithSky preset levels) show the cloud
+// panorama (sky_f.glsl) by view direction, over a clear-sky gradient with the moon or sun
+// disc, stars, and lightning lighting the clouds from inside. Writes a sky marker
+// (depth -1000) to the reflection target so haze and light shafts can tell sky from wall.
+uniform int u_sky;
+uniform sampler2D u_skyPano;
+uniform vec3 u_skyWX;          // world axes in camera space
+uniform vec3 u_skyWY;
+uniform vec3 u_skyWZ;
+uniform vec3 u_skySunDir;      // world
+uniform vec3 u_skySunCol;
+uniform vec4 u_skyZenith;      // rgb, w = stars
+uniform vec4 u_skyHorizon;     // rgb, w = sun/moon disc radius (radians)
+uniform vec4 u_skyBelowExp;   // below-horizon colour, w = exposure
+uniform vec4 u_skyFlash;       // world dir, intensity
+
+float skyHash(vec3 p)
+{
+    p = fract(p * vec3(443.897, 441.423, 437.195));
+    p += dot(p, p.yzx + 19.19);
+    return fract((p.x + p.y) * p.z);
+}
+
+void skyMain()
+{
+    vec2 c = vec2(gl_FragCoord.x * (u_pplScreen.x / u_pplScreen.z),
+                  (u_pplScreen.w - gl_FragCoord.y) * (u_pplScreen.y / u_pplScreen.w));
+    vec3 dc = normalize(vec3((c.x - u_pplProj.x) / u_pplProj.z, 1.0, (u_pplProj.y - c.y) / u_pplProj.z));
+    vec3 dw = normalize(vec3(dot(dc, u_skyWX), dot(dc, u_skyWY), dot(dc, u_skyWZ)));
+
+    // Clear sky behind the clouds.
+    float up = clamp(dw.z, 0.0, 1.0);
+    vec3 bg = mix(u_skyHorizon.rgb, u_skyZenith.rgb, pow(up, 0.45));
+    float cosA = dot(dw, u_skySunDir);
+    bg += normalize(u_skySunCol + 1e-4) * (pow(max(cosA, 0.0), 400.0) * 0.35 + pow(max(cosA, 0.0), 40.0) * 0.05);
+    float ang = acos(clamp(cosA, -1.0, 1.0));
+    float disc = 1.0 - smoothstep(u_skyHorizon.w * 0.85, u_skyHorizon.w, ang);
+    // The disc at a fixed, believable brightness (the light it casts on clouds is separate).
+    vec3 discCol = normalize(u_skySunCol + 1e-4) * 1.6 * (0.85 + 0.15 * skyHash(floor(dw * 900.0)));
+    bg += discCol * disc;
+    // Stars: sparse points on a fine direction grid.
+    if (u_skyZenith.w > 0.0)
+    {
+        vec3 g = floor(dw * 420.0);
+        float h = skyHash(g);
+        float star = smoothstep(0.9965, 1.0, h) * u_skyZenith.w * smoothstep(0.02, 0.25, dw.z);
+        bg += vec3(0.8, 0.85, 1.0) * star * (0.5 + 1.5 * skyHash(g + 7.0));
+    }
+
+    // Clouds from the panorama (same mapping as sky_f.glsl).
+    const float ELEV_MIN = 0.12;
+    float az = atan(dw.y, dw.x) / 6.2831853;
+    float el = asin(clamp(dw.z, -1.0, 1.0));
+    vec2 puv = vec2(fract(az), clamp((el + ELEV_MIN) / (1.5707963 + ELEV_MIN), 0.0, 1.0));
+    vec4 cl = textureLod(u_skyPano, puv, 0.0);
+    vec3 col = (bg * cl.a + cl.rgb) * u_skyBelowExp.w;
+
+    // Lightning: lights the cloud it's in, flickering, instantly (not through the panorama).
+    if (u_skyFlash.w > 0.0)
+    {
+        float fa = acos(clamp(dot(dw, u_skyFlash.xyz), -1.0, 1.0));
+        float glow = exp(-fa * 3.5) + 0.25 * exp(-fa * 0.8);
+        col += vec3(0.75, 0.8, 1.0) * u_skyFlash.w * glow * (1.0 - cl.a) * 2.5;
+    }
+
+    // Below the horizon: the murk the deck sits on.
+    float below = smoothstep(0.0, 1.0, clamp(-dw.z / 0.1, 0.0, 1.0));
+    col = mix(col, u_skyBelowExp.rgb * u_skyBelowExp.w, below);
+
+    float bright = max(max(col.r, col.g), col.b);
+    // Glow: the whole sky feeds bloom a little, so it wraps softly over the edges of
+    // buildings and rock in front of it (how a bright sky reads on camera); the brightest
+    // breaks feed it more. Bloom also adds this back onto the sky itself (over a
+    // large area, measured ~10x), so the base colour is reduced to match and the sky keeps its brightness.
+    const float SKY_GLOW = 0.25;
+    vec3 emiss = col * (SKY_GLOW + smoothstep(0.6, 1.4, bright) * 0.6);
+    fragColor = vec4(col / (1.0 + 10.4 * SKY_GLOW), 1.0);
+    fragColorEmiss = vec4(emiss, 1.0);
+    // Very far for ambient occlusion (zero depth made it treat the sky as the nearest surface
+    // and darken it), facing the camera.
+    fragColorPos = vec4(gl_FragCoord.x / iResolution.x, gl_FragCoord.y / iResolution.y, 1.0e4, 1.0);
+    fragColorNormal = vec4(0.0, 0.0, 1.0, 1.0);
+    fragColorSSR = vec4(0.0, 0.0, -1000.0, 1.0);
+    fragColorMat = vec4(1.0, 0.0, 0.0, 1.0);
+}
+
 float luminance(vec3 c_rgb)
 {
     const vec3 W = vec3(0.2125, 0.7154, 0.0721);
@@ -418,6 +504,7 @@ vec4 bilinear_paletted_light(float index)
 void main(void)
 {
     if (saberBlade != 0) { saberBladeMain(); return; } // Added (remaster)
+    if (u_sky != 0) { skyMain(); return; } // Added (remaster)
     float originalZ = gl_FragCoord.z / gl_FragCoord.w;
     vec3 adjusted_coords = vec3(f_coord.x/iResolution.x, f_coord.y/iResolution.y, originalZ);
     vec3 adjusted_coords_norms = vec3(gl_FragCoord.x/iResolution.x, gl_FragCoord.y/iResolution.y, 1.0/gl_FragCoord.z);

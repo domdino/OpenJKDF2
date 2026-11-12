@@ -17,7 +17,7 @@ for v in $VIEWS; do
         boc)    MAP=20aboc.jkl ;;
         yun)    MAP=07yun.jkl ;;
         cargo)  MAP=10cargo.jkl; WARP="-3.1100 14.0600 1.6903 25 0 0" ;;
-        tower)  MAP=14tower.jkl; WARP="8.5200 15.3900 19.3077 15 0 0"; export CAPTURE_DELAY=3 ;;
+        tower)  MAP=14tower.jkl ;;
         fuel)   MAP=09fuelstation.jkl ;;
         barons) MAP=06abarons.jkl ;;
         saber)  MAP=01narshadda.jkl; WEAPON=10; export CAPTURE_CMDS=red5 ;;

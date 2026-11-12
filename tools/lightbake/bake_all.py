@@ -37,6 +37,14 @@ SKIES = [
     (("12sky3",), "0.35,0.25,0.25"),                          # sunset
 ]
 DEFAULT_SKY = "0.02,0.025,0.035"
+# Sun (or moon) per preset: azimuth, elevation and colour from src/Engine/sithSky.c, so the baked
+# shadows agree with the sky; strength is the bake's own (sky light is the "--sky" colour above).
+SUNS = {
+    "13cnsky2": "215,24,0.35,0.78,0.84,1.0",                           # storm: the moon breaking through
+    "04sky01": "60,40,SUN,1.0,0.96,0.88", "10sky2": "60,40,SUN,1.0,0.96,0.88", "14sky": "60,40,SUN,1.0,0.96,0.88",
+    "06sky01": "150,55,SUN,1.0,0.97,0.90", "06sky02": "150,55,SUN,1.0,0.97,0.90", "09skyb": "150,55,SUN,1.0,0.97,0.90",
+}
+SUN_STRENGTH = float(os.environ.get("SUN_STRENGTH", "8.0"))   # cargo: 3 barely showed, 8 reads as daylight
 
 
 def log(msg):
@@ -60,7 +68,7 @@ def run(cmd, tag):
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     out = (p.stdout or "") + (p.stderr or "")
     keep = [l for l in out.splitlines() if any(k in l for k in
-            ("light map:", "fit:", "VIS: done", "calibration", "final bake", "SIDECAR", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
+            ("light map:", "fit:", "VIS: done", "calibration", "final bake", "sun from", "SIDECAR", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
     for l in keep:
         log("  " + l.strip())
     if p.returncode != 0 or "FAILED" in out:
@@ -68,6 +76,11 @@ def run(cmd, tag):
         return False
     log("  %s %.0f s" % (tag, time.time() - t0))
     return True
+
+
+def sun_args(preset):
+    s = SUNS.get(preset)
+    return ["--sun", s.replace("SUN", str(SUN_STRENGTH))] if s else []
 
 
 def blender(script, *args):
@@ -93,7 +106,7 @@ def main():
             t0 = time.time()
             sky, preset = sky_for(os.path.join(ROOT, folder))
             if run(["python3", "-I", "tools/lightbake/volume_points.py", level], "volume points") and \
-                    run(blender("tools/blender/volume_bake.py", folder, *BAKE_ARGS, "--sky", sky), "volume"):
+                    run(blender("tools/blender/volume_bake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "volume"):
                 log("%s: volume done in %.1f min" % (level, (time.time() - t0) / 60))
             continue
         if "--probes-only" in sys.argv:
@@ -102,7 +115,7 @@ def main():
                 continue
             t0 = time.time()
             sky, preset = sky_for(os.path.join(ROOT, folder))
-            if run(blender("tools/blender/probe_bake.py", folder, *BAKE_ARGS, "--sky", sky), "probes"):
+            if run(blender("tools/blender/probe_bake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "probes"):
                 log("%s: probes done in %.1f min" % (level, (time.time() - t0) / 60))
             continue
         done = os.path.exists(os.path.join(ROOT, "hd", "jkgm", "lightmaps", level + ".jklm"))
@@ -118,15 +131,15 @@ def main():
                 continue
         sky, preset = sky_for(os.path.join(ROOT, folder))
         log("  sky %s (%s)" % (sky, preset))
-        if not run(blender("tools/blender/lightbake.py", folder, *BAKE_ARGS, "--sky", sky), "bake"):
+        if not run(blender("tools/blender/lightbake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "bake"):
             continue
         if not run(blender("tools/blender/lightmap_sidecar.py", folder), "sidecar"):
             continue
-        if not run(blender("tools/blender/probe_bake.py", folder, *BAKE_ARGS, "--sky", sky), "probes"):
+        if not run(blender("tools/blender/probe_bake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "probes"):
             continue
         if not run(["python3", "-I", "tools/lightbake/volume_points.py", level], "volume points"):
             continue
-        if not run(blender("tools/blender/volume_bake.py", folder, *BAKE_ARGS, "--sky", sky), "volume"):
+        if not run(blender("tools/blender/volume_bake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "volume"):
             continue
         log("%s: done in %.1f min" % (level, (time.time() - t0) / 60))
 

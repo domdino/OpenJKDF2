@@ -31,8 +31,8 @@ _src = open(os.path.join(HERE, "lightbake.py")).read()
 _cut = _src.rfind("\ntry:\n    main()")
 _lb = {"__name__": "lightbake", "__file__": os.path.join(HERE, "lightbake.py")}
 exec(compile(_src[:_cut] if _cut > 0 else _src, "lightbake.py", "exec"), _lb)
-arg, build, add_lights, add_glow_cards, set_glow = (
-    _lb[k] for k in ("arg", "build", "add_lights", "add_glow_cards", "set_glow"))
+arg, build, add_lights, add_glow_cards, set_glow, add_sun = (
+    _lb[k] for k in ("arg", "build", "add_lights", "add_glow_cards", "set_glow", "add_sun"))
 
 R = 0.003   # octahedron radius
 
@@ -116,6 +116,7 @@ def main():
     lj = os.path.join(folder, "lights.json")
     fitted = json.load(open(lj)) if os.path.exists(lj) else None
     lamps = add_lights(fitted["lights"]) if fitted else []
+    add_sun()
     for o, e in lamps:
         o.data.energy = e * scale * arg("--power", 1.0, float)
     off = arg("--glow-offset", 0.015, float)

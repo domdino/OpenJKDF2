@@ -103,7 +103,15 @@ def build(d, folder, sky_rgb, glow_strength):
             em = nt.nodes.new("ShaderNodeEmission")
             em.inputs["Color"].default_value = (*sky_rgb, 1.0)
             em.inputs["Strength"].default_value = 1.0
-            nt.links.new(em.outputs[0], out.inputs[0])
+            # The sky faces close the level in like a lid; let shadow rays through them so a sun
+            # (--sun) outside can shine in. Everything else still sees glowing sky.
+            lp = nt.nodes.new("ShaderNodeLightPath")
+            tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+            mix = nt.nodes.new("ShaderNodeMixShader")
+            nt.links.new(lp.outputs["Is Shadow Ray"], mix.inputs[0])
+            nt.links.new(em.outputs[0], mix.inputs[1])
+            nt.links.new(tr.outputs[0], mix.inputs[2])
+            nt.links.new(mix.outputs[0], out.inputs[0])
         else:
             uvn = nt.nodes.new("ShaderNodeUVMap")
             uvn.uv_map = "tex"
@@ -290,6 +298,29 @@ def set_glow(obj, strength, cards=None):
             m.node_tree.nodes["card_emission"].inputs["Strength"].default_value = strength
 
 
+def add_sun():
+    """--sun AZ,EL,STRENGTH[,R,G,B]: a sun (or moon) for outdoor levels, in the direction of the
+    level's sky preset (src/Engine/sithSky.c: azimuth from world +X counter-clockwise, elevation
+    above the horizon), so baked shadows agree with the sky. Not part of the calibration (that
+    matches the recovered designer lights to the 1997 light). Returns (object, strength) or None."""
+    spec = arg("--sun")
+    if not spec:
+        return None
+    v = [float(x) for x in spec.split(",")]
+    az, el, strength = math.radians(v[0]), math.radians(v[1]), v[2]
+    col = v[3:6] if len(v) >= 6 else (1.0, 0.96, 0.88)
+    d = Vector((math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)))
+    ld = bpy.data.lights.new("sun", "SUN")
+    ld.energy = strength
+    ld.color = col
+    ld.angle = math.radians(1.5)   # a soft-edged sun disc
+    o = bpy.data.objects.new("sun", ld)
+    o.rotation_euler = d.to_track_quat("Z", "Y").to_euler()   # a sun shines down its -Z
+    bpy.context.scene.collection.objects.link(o)
+    log("sun from azimuth %.0f, elevation %.0f, strength %.2f" % (v[0], v[1], strength))
+    return o, strength
+
+
 def add_lights(lights):
     """The fitted designer lights (tools/lightbake/fit_lights.py) as point lights. Relative power
     a * r^2 (a JED light of intensity a and range r gives about a/2 at r/2); calibrated later."""
@@ -395,6 +426,7 @@ def main():
     lj = os.path.join(folder, "lights.json")
     fitted = json.load(open(lj)) if os.path.exists(lj) and "--no-lights" not in sys.argv else None
     lamps = add_lights(fitted["lights"]) if fitted else []
+    sun = add_sun()
     off = arg("--glow-offset", 0.015, float)
     cards = add_glow_cards(d, folder, glow, off) if off > 0 else None
     set_glow(obj, glow, cards)
@@ -418,6 +450,8 @@ def main():
             # Calibrate: bake the recovered lights alone and match the 1997 lighting they were
             # fitted to (least squares over every surface corner).
             set_glow(obj, 0.0, cards)
+            if sun:
+                sun[0].data.energy = 0.0   # the calibration is for the designer lights alone
             bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, margin=2)
             # Match the 1997 brightness at surface centres (mean of the corner values there):
             # corners sit in creases, which a real bake darkens and JED's linear light didn't.
@@ -441,6 +475,9 @@ def main():
             for o, e in lamps:
                 o.data.energy = e * scale * arg("--power", 1.0, float)
             set_glow(obj, glow, cards)
+            if sun:
+                sun[0].data.energy = sun[1]
+                sun[0].data.update_tag()
             # Final bake into a fresh image: reading the calibration pixels back pins the
             # first image's buffer, and a second bake into it never reached the saved file.
             img = bpy.data.images.new("lightmap_final", W, H, float_buffer=True, alpha=False)

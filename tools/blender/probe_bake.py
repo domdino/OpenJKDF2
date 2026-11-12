@@ -38,8 +38,8 @@ _src = open(os.path.join(HERE, "lightbake.py")).read()
 _cut = _src.rfind("\ntry:\n    main()")
 _lb = {"__name__": "lightbake", "__file__": os.path.join(HERE, "lightbake.py")}
 exec(compile(_src[:_cut] if _cut > 0 else _src, "lightbake.py", "exec"), _lb)
-arg, build, add_lights, add_glow_cards, set_glow, add_bake_target, sample = (
-    _lb[k] for k in ("arg", "build", "add_lights", "add_glow_cards", "set_glow", "add_bake_target", "sample"))
+arg, build, add_lights, add_glow_cards, set_glow, add_sun, add_bake_target, sample = (
+    _lb[k] for k in ("arg", "build", "add_lights", "add_glow_cards", "set_glow", "add_sun", "add_bake_target", "sample"))
 
 LAYERS = (0.03, 0.09)  # probe heights above the floor: shins, chest (Kyle is 0.18 tall)
 CHEST = LAYERS[1]
@@ -173,6 +173,7 @@ def main():
     lj = os.path.join(folder, "lights.json")
     fitted = json.load(open(lj)) if os.path.exists(lj) else None
     lamps = add_lights(fitted["lights"]) if fitted else []
+    sun = add_sun()
     # Place probes before the glow cards exist: the ceiling check would hit the card floating
     # just above a lit floor strip and skip exactly the floors that matter most.
     bpy.context.view_layer.update()
@@ -192,6 +193,8 @@ def main():
         cal = bpy.data.images.new("calibration", W, H, float_buffer=True, alpha=False)
         add_bake_target(obj, cal)
         set_glow(obj, 0.0, cards)
+        if sun:
+            sun[0].data.energy = 0.0   # calibration: the designer lights alone
         for o in bpy.data.objects:
             o.select_set(o == obj)
         bpy.context.view_layer.objects.active = obj
@@ -214,6 +217,9 @@ def main():
             o.data.energy = e * scale * arg("--power", 1.0, float)
             o.data.update_tag()
     set_glow(obj, glow, cards)
+    if sun:
+        sun[0].data.energy = sun[1]
+        sun[0].data.update_tag()
 
     # Probe bake.
     per_row = 512

@@ -245,6 +245,14 @@ def main():
     log("JK nodes for roles:", {r: jk.nodes[i].name for r, i in sorted(roles.items())})
     joint_of = [Vector((rest[i] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1])[:3]) for i, nd in enumerate(jk.nodes)]
     joint = {r: joint_of[i] for r, i in roles.items()}
+    # --flatten F: lower whatever sticks up above the hips towards hip height (F = 0.5 halves it).
+    # The bar drunk's raised knee looms with Jedi Academy's thick legs; his back and anything
+    # hanging below the table stay where they are.
+    if "--flatten" in argv:
+        f = float(argv[argv.index("--flatten") + 1])
+        z0 = joint["hip"].z
+        joint = {r: (Vector((v.x, v.y, z0 + (v.z - z0) * f)) if v.z > z0 else v) for r, v in joint.items()}
+        log("pose above the hips flattened to %.0f %%" % (f * 100))
     snap = [(b, r, c) for b, r, c in SNAP if r in native]
     zs = []
     for k, me in enumerate(jk.geosets[0]):
@@ -303,25 +311,51 @@ def main():
     log("pre-snap offsets (x,y,z):", {b: tuple(round(c, 4) for c in v) for b, v in pre.items()})
     # Posture first: hips, then the whole upper body (shoulder line, lean, twist), as blocks.
     W = lambda b: arm.matrix_world @ arm.pose.bones[b].head
+    lying = False
     if {"lthigh", "rthigh", "torso"} <= native:
-        # Base point "below" the hip midpoint, so only the hip line's turn is matched. Below means
-        # world down for a standing model; for one lying down (the bar drunk) it means along the
-        # spine, away from the torso, or the hips stay upright and stick out of the body.
+        # Base point below the hip midpoint (world down), so only the hip line's turn is matched.
         drop = Vector((0, 0, 0.05))
         jk_mid = (joint["lthigh"] + joint["rthigh"]) / 2
         spine = jk_mid - joint["torso"]
-        jk_drop = drop
-        if spine.length > 1e-6 and spine.normalized().dot(Vector((0, 0, -1))) < 0.7:   # over ~45 degrees off vertical
-            jk_drop = -spine.normalized() * 0.05
-            ja_mid = (W("lfemurYZ") + W("rfemurYZ")) / 2
-            ja_spine = ja_mid - W("upper_lumbar")
-            drop = -ja_spine.normalized() * 0.05
-            log("lying pose: hips aligned along the spine")
-        align_block(arm, "pelvis", W("lfemurYZ"), W("rfemurYZ"), (W("lfemurYZ") + W("rfemurYZ")) / 2 - drop,
-                    joint["lthigh"], joint["rthigh"], jk_mid - jk_drop, move=False)
+        lying = spine.length > 1e-6 and spine.normalized().dot(Vector((0, 0, -1))) < 0.7   # >~45 deg off vertical
+        if not lying:
+            align_block(arm, "pelvis", W("lfemurYZ"), W("rfemurYZ"), (W("lfemurYZ") + W("rfemurYZ")) / 2 - drop,
+                        joint["lthigh"], joint["rthigh"], jk_mid - drop, move=False)
+        else:
+            # A model baked lying down (the bar drunk, on his back): "down" and a shoulder triangle
+            # can't tell chest from back on a flat body, so each block is turned to face the way
+            # the JK node faces (its rest rotation applied to the model's forward, +Y).
+            log("lying pose: hips and torso turned to the JK nodes' facing")
+            def jk_fwd(role):
+                M = rest[roles[role]]
+                return Vector(M[:3, :3] @ [0.0, 1.0, 0.0]).normalized()
+            # The JA model's facing at rest, from its own hips: up x (right - left) is forward.
+            ja_rest_fwd = Vector((0, 0, 1)).cross(W("rfemurYZ") - W("lfemurYZ")).normalized()
+            def ja_fwd(bone):
+                pb = arm.pose.bones[bone]
+                A = arm.matrix_world
+                cur = (A @ pb.matrix).to_quaternion()
+                rst = (A @ pb.bone.matrix_local).to_quaternion()
+                return ((cur @ rst.inverted()) @ ja_rest_fwd).normalized()
+            def base(l, r, fwd):
+                x = (l - r).normalized()
+                f = (fwd - x * fwd.dot(x)).normalized()
+                return (l + r) / 2 - x.cross(f) * 0.05   # frame3 takes "up" = midpoint - base
+            align_block(arm, "pelvis", W("lfemurYZ"), W("rfemurYZ"), base(W("lfemurYZ"), W("rfemurYZ"), ja_fwd("pelvis")),
+                        joint["lthigh"], joint["rthigh"], base(joint["lthigh"], joint["rthigh"], jk_fwd("hip")), move=False)
     if {"lshouldr", "rshouldr", "torso"} <= native:
-        align_block(arm, "upper_lumbar", W("lhumerus"), W("rhumerus"), W("upper_lumbar"),
-                    joint["lshouldr"], joint["rshouldr"], joint["torso"])
+        if not lying:
+            align_block(arm, "upper_lumbar", W("lhumerus"), W("rhumerus"), W("upper_lumbar"),
+                        joint["lshouldr"], joint["rshouldr"], joint["torso"])
+        else:
+            align_block(arm, "upper_lumbar", W("lhumerus"), W("rhumerus"), base(W("lhumerus"), W("rhumerus"), ja_fwd("upper_lumbar")),
+                        joint["lshouldr"], joint["rshouldr"], base(joint["lshouldr"], joint["rshouldr"], jk_fwd("torso")))
+            log("facing after: pelvis %s (JK hips %s), chest %s (JK torso %s)" % (
+                tuple(round(c, 2) for c in ja_fwd("pelvis")), tuple(round(c, 2) for c in jk_fwd("hip")),
+                tuple(round(c, 2) for c in ja_fwd("upper_lumbar")), tuple(round(c, 2) for c in jk_fwd("torso"))))
+            log("JA left thigh %s right thigh %s; JK lleg %s rleg %s" % (
+                tuple(round(c, 3) for c in W("lfemurYZ")), tuple(round(c, 3) for c in W("rfemurYZ")),
+                tuple(round(c, 3) for c in joint["lthigh"]), tuple(round(c, 3) for c in joint["rthigh"])))
     post = {b: round(((arm.matrix_world @ arm.pose.bones[b].head) - joint[n]).length, 4)
             for b, n, _ in SNAP if b in arm.pose.bones and n in roles}
     log("offsets after posture fit:", post)
@@ -345,7 +379,24 @@ def main():
     # Keep the head facing straight ahead and upright (as the JK originals do at rest), undoing the
     # upper body's lean/twist for the head only. (JK head nodes' own rest rotations are compensated
     # by their meshes, so they can't be used as a target.)
-    if "head" in native and "cranium" in arm.pose.bones:
+    if lying and "head" in native and "cranium" in arm.pose.bones:
+        # Lying down: the JK head node does carry the pose (the drunk's head lolls back), so turn
+        # the head to face and tilt the way it does instead of standing it upright.
+        pb = arm.pose.bones["cranium"]
+        A = arm.matrix_world
+        cur = (A @ pb.matrix).to_quaternion() @ (A @ pb.bone.matrix_local).to_quaternion().inverted()
+        def frame(f, u):
+            f = f.normalized()
+            u = (u - f * u.dot(f)).normalized()
+            return Matrix((f, u, f.cross(u))).transposed()
+        Mh = rest[roles["head"]]
+        R = frame(Vector(Mh[:3, :3] @ [0.0, 1.0, 0.0]), Vector(Mh[:3, :3] @ [0.0, 0.0, 1.0])) @ \
+            frame(cur @ ja_rest_fwd, cur @ Vector((0, 0, 1))).transposed()
+        hw = A @ pb.head
+        pb.matrix = A.inverted() @ Matrix.Translation(hw) @ R.to_4x4() @ Matrix.Translation(-hw) @ A @ pb.matrix
+        bpy.context.view_layer.update()
+        log("lying pose: head turned to the JK head's facing")
+    elif "head" in native and "cranium" in arm.pose.bones:
         pb = arm.pose.bones["cranium"]
         before = pb.matrix.to_3x3()
         rest_rot = arm.data.bones["cranium"].matrix_local.to_3x3()
@@ -404,6 +455,19 @@ def main():
                               "extralight": 0.0, "idx": idx})
             out.face_normals.append((pn.x, pn.y, pn.z))
         oe.to_mesh_clear()
+    # --squash F: squash everything above the hips' height by F (a body settling as it lies; the
+    # bar drunk only: Jedi Academy's bulky Trandoshan bulged half a metre off the table). Static
+    # models only: the vertices move, the skeleton doesn't.
+    if "--squash" in argv:
+        f = float(argv[argv.index("--squash") + 1])
+        zh = joint["hip"].z
+        out.verts = [(v[0], v[1], zh + (v[2] - zh) * f if v[2] > zh else v[2], v[3]) for v in out.verts]
+        def fixn(n):
+            n = Vector((n[0], n[1], n[2] / f))
+            return tuple(n.normalized())
+        out.normals = [fixn(n) for n in out.normals]
+        out.face_normals = [fixn(n) for n in out.face_normals]
+        log("squashed above the hips to %.0f %%" % (f * 100))
     # The skin hangs from the root node: express it in that node's rest space.
     import numpy as np
     inv0 = np.linalg.inv(rest[0])

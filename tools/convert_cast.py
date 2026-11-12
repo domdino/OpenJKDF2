@@ -47,8 +47,9 @@ CAST = {
     # lying down). A 4th field fits onto another JK model than the entry's own name.
     # A 5th field sizes the character from a standing JK model (the lying one is only as tall as
     # it is thick).
-    "thout":  ("trandoshan", "default", "Passed-out Trandoshan", "thout", "th"),
-    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout", "th"),
+    # A 6th field: extra arguments for the converter (the drunk lies flatter than his 1997 pose).
+    "thout":  ("trandoshan", "default", "Passed-out Trandoshan", "thout", "th", ["--flatten", "0.25", "--squash", "0.6"]),
+    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout", "th", ["--flatten", "0.25", "--squash", "0.6"]),
 }
 
 
@@ -102,7 +103,7 @@ def convert(name):
     print("==", name, "->", ja, skin)
     if not run([BLENDER, "-b", "--factory-startup", "-noaudio", "--python",
                 os.path.join(ROOT, "tools", "blender", "ja_to_jk.py"), "--",
-                glm, JA, skin, tpl, out, name, *scale_ref], "convert"):
+                glm, JA, skin, tpl, out, name, *scale_ref, *(CAST[name][5] if len(CAST[name]) > 5 else [])], "convert"):
         return False
     if not run([sys.executable, "-I", os.path.join(ROOT, "tools", "make_character_textures.py"), out, name], "textures"):
         return False

@@ -360,7 +360,7 @@ def rubble(d, creases, P, Pd, density, dmin, dmax, max_rocks, seed=7):
         if not len(xs):
             continue
         Q = a[None] + xs[:, None] * t[None]
-        c = np.clip((value_noise(Q * 3.0, 91) - 0.35) / 0.35, 0, 1) ** 1.5 * 2.5   # clusters and gaps
+        c = np.clip((value_noise(Q * 3.0, 91) - 0.2) / 0.4, 0, 1) ** 1.2 * 2.0   # clusters and short gaps
         hit = rng.random(len(xs)) < density * step * c
         for q in Q[hit]:
             dia = dmin * (dmax / dmin) ** (rng.random() ** 1.3)
@@ -376,7 +376,7 @@ def rubble(d, creases, P, Pd, density, dmin, dmax, max_rocks, seed=7):
     for base, r, fn, ws in rocks:
         _, i = tree.query(base)
         base = base + (Pd[i] - P[i])                     # onto the skin
-        IV, IF = shapes[r > 0.01]
+        IV, IF = shapes[r > 0.015]
         v = IV.copy()
         v *= (1 + 0.45 * (value_noise(v * 1.7 + rng.random(3) * 50, 5) - 0.5))[:, None]
         v *= np.array([1.0, rng.uniform(0.65, 1.0), rng.uniform(0.6, 0.9)])
@@ -439,8 +439,8 @@ def main():
     log("%d vertices, %d triangles; relief %.3f to %.3f (mean %.3f); %d pinned" % (
         len(P), len(T), float(D.min()), float(D.max()), float(D.mean()), int(border.sum())))
 
-    rb = rubble(d, creases, P, Pd, arg("--rocks", 45.0), arg("--rock-min", 0.010), arg("--rock-max", 0.045),
-                arg("--rocks-max", 30000, int))
+    rb = rubble(d, creases, P, Pd, arg("--rocks", 80.0), arg("--rock-min", 0.010), arg("--rock-max", 0.045),
+                arg("--rocks-max", 40000, int))
     rpath = os.path.join(folder, "rubble.npz")
     if rb:
         rP, rT, rUV, rS, nrocks, ncre = rb

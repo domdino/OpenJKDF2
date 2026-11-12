@@ -1554,6 +1554,9 @@ static void Window_DevCaptureTick(void)
                 const char* pWarp = getenv("OPENJKDF2_CAPTURE_WARP");
                 if (pWarp && pWarp[0]) sithCommand_Warp(NULL, pWarp);
                 rdVector_Zero3(&pPlayer->actorParams.headPYR);
+                // OPENJKDF2_CAPTURE_PITCH=deg: look up (+) or down (-) instead.
+                const char* pPitch = getenv("OPENJKDF2_CAPTURE_PITCH");
+                if (pPitch && pPitch[0]) pPlayer->actorParams.headPYR.x = (flex_t)atof(pPitch);
             }
             // OPENJKDF2_CAPTURE_CAMERA=N: cycle the camera N times (1 = third person, to see Kyle).
             const char* pCam = getenv("OPENJKDF2_CAPTURE_CAMERA");

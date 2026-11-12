@@ -173,6 +173,7 @@ extern flex_t jkPlayer_saberGlowStrength;
 extern int jkPlayer_bSaberTrails;
 extern int jkPlayer_bVolumetricSky;
 extern int jkPlayer_bLightmaps;
+extern int jkPlayer_bTerrainSkin;
 extern flex_t jkPlayer_lightmapFill;
 extern flex_t jkPlayer_lightmapGain;
 extern flex_t jkPlayer_lightmapMax;

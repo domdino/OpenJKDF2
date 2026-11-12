@@ -103,6 +103,7 @@ flex_t jkPlayer_cineGlow = 0.6;                            // Added (remaster): 
 flex_t jkPlayer_cineSat = 1.0;                             // Added (remaster): share of the probe colour in a model's fill and key
 flex_t jkPlayer_cineUnder = 1.0;                          // Added (remaster): floor light on models (light probes)
 int jkPlayer_bLightmaps = 0;                                // Added (remaster): baked light maps (hd/jkgm/lightmaps)
+int jkPlayer_bTerrainSkin = 1;                              // Added (remaster): terrain skin (hd/jkgm/lightmaps/<level>.jkls)
 flex_t jkPlayer_lightmapFill = -1.0;                        // Added (remaster): <0 = the sidecar's own fill
 flex_t jkPlayer_lightmapGain = 1.0;
 flex_t jkPlayer_lightmapMax = 2.5;
@@ -304,6 +305,9 @@ void jkPlayer_StartupVars()
     // light (<0 = the level's own setting), gain scales the bake, max caps it (hot spots).
     // Needs r_perPixelLighting.
     sithCvar_RegisterBool("r_lightmaps",                0,                          &jkPlayer_bLightmaps,               CVARFLAG_LOCAL);
+    // Terrain skin (tools/lightbake/terrain_skin.py): finer, lumpy rock over the flat terrain
+    // faces, where a level has one. Drawn with the light maps.
+    sithCvar_RegisterBool("r_terrainSkin",              1,                          &jkPlayer_bTerrainSkin,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_lightmapFill",             -1.0,                       &jkPlayer_lightmapFill,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_lightmapGain",             1.0,                        &jkPlayer_lightmapGain,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_lightmapMax",              2.5,                        &jkPlayer_lightmapMax,              CVARFLAG_LOCAL);

@@ -16,6 +16,7 @@
 # Env: CAPTURE_MAP (default 01narshadda.jkl), CAPTURE_DELAY (s, default 8),
 #      CAPTURE_FRAMES (default 600), CAPTURE_HD (1 = use hd/jkgm textures, 0 = originals), CAPTURE_WARP ("x y z pitch yaw roll", camera
 #      position; each run prints the warp it ended at, so a good view can be reused),
+#      CAPTURE_PITCH (head pitch in degrees, + = look up),
 #      CAPTURE_VIDEO (e.g. 'video\\01-02a.smk': shoot that cutscene CAPTURE_DELAY s in),
 #      CAPTURE_HDVIDEO (folder of HD cutscene replacements, default hd/video),
 #      CAPTURE_CAMERA (1 = third-person camera, to see Kyle),
@@ -90,6 +91,7 @@ OPENJKDF2_ROOT="$CAPROOT" \
 OPENJKDF2_CAPTURE="$OUT_DIR/$NAME.png" \
 OPENJKDF2_CAPTURE_CVARS="$BASELINE $* $ORIG_CVARS" \
 OPENJKDF2_CAPTURE_WARP="$WARP" \
+OPENJKDF2_CAPTURE_PITCH="${CAPTURE_PITCH:-}" \
 OPENJKDF2_CAPTURE_DELAY="${CAPTURE_DELAY:-8}" \
 OPENJKDF2_CAPTURE_FRAMES="${CAPTURE_FRAMES:-600}" \
 OPENJKDF2_CAPTURE_VIDEO="${CAPTURE_VIDEO:-}" \

@@ -167,7 +167,7 @@ std3DSimpleTexStage std3D_smokeStage; // Added (remaster): smoke and steam
 static GLint std3D_smokeU[16];
 enum { SMU_FINE, SMU_COARSE, SMU_FORIGIN, SMU_FSIZE, SMU_CORIGIN, SMU_CSIZE, SMU_NUM, SMU_SCREEN, SMU_WORLD, SMU_LOOK, SMU_MISC, SMU_ASPECT, SMU_TIME };
 static GLuint std3D_fogTex[2] = {0, 0};
-static GLint std3D_fogU[16];
+static GLint std3D_fogU[24];
 static float std3D_fogCamPos[3];
 enum { FOGU_FINE, FOGU_COARSE, FOGU_FORIGIN, FOGU_FSIZE, FOGU_CORIGIN, FOGU_CSIZE, FOGU_PROJ, FOGU_SCREEN,
        FOGU_WX, FOGU_WY, FOGU_WZ, FOGU_CAM, FOGU_FOG, FOGU_FOG2, FOGU_HFOG,
@@ -194,6 +194,17 @@ static GLint uniform_model = -1, uniform_cine = -1; // Added (remaster): cinemat
 GLint attribute_v_lmSurf = -1;
 GLint attribute_v_glow = -1; // Added (remaster): light-probe glow on models (vertex nz)
 static GLint uniform_lmOn = -1, uniform_lmAtlas = -1, uniform_lmData = -1, uniform_lmParams = -1, uniform_lmCamPos = -1;
+// Added (remaster): terrain skin (tools/lightbake/terrain_skin.py): finer, lumpier copies of the
+// rock and ground faces, drawn over the flat originals whenever the game draws those.
+typedef struct { int surf; rdTri tri; float col[4]; float light; int n; } std3D_SkinVisRec;
+#define STD3D_SKIN_MAX_VIS 4096
+static GLuint std3D_skinVbo = 0;
+static int std3D_skinNum = 0;               // world surfaces in the tables below
+static uint32_t* std3D_skinFirst = NULL;    // per world surface: first skin vertex
+static uint32_t* std3D_skinCount = NULL;    // per world surface: skin vertices (0 = none)
+static int* std3D_skinVisIdx = NULL;        // per world surface: its place in this draw + 1
+static std3D_SkinVisRec std3D_skinVis[STD3D_SKIN_MAX_VIS];
+static GLint uniform_worldSpace = -1, uniform_skinCam = -1, uniform_skinFar = -1;
 static float std3D_skyWorldAxes[9]; // world X, Y, Z axes in camera space (last world draw)
 static int std3D_frameNumGlow = 0;
 static float std3D_frameGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], std3D_frameGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
@@ -774,6 +785,9 @@ int init_resources()
     uniform_lmData = std3D_tryFindUniform(programDefault, "u_lmData");
     uniform_lmParams = std3D_tryFindUniform(programDefault, "u_lmParams");
     uniform_lmCamPos = std3D_tryFindUniform(programDefault, "u_lmCamPos");
+    uniform_worldSpace = std3D_tryFindUniform(programDefault, "u_worldSpace"); // Added (remaster): terrain skin
+    uniform_skinCam = std3D_tryFindUniform(programDefault, "u_skinCam");
+    uniform_skinFar = std3D_tryFindUniform(programDefault, "u_skinFar");
     uniform_skyPano = std3D_tryFindUniform(programDefault, "u_skyPano");
     uniform_skyWX = std3D_tryFindUniform(programDefault, "u_skyWX");
     uniform_skyWY = std3D_tryFindUniform(programDefault, "u_skyWY");
@@ -1273,6 +1287,174 @@ static void std3D_LightmapLoad(SithWorld* w)
 }
 
 // The current level's light map, loading it when the level changes. 1 if there is one.
+// Added (remaster): terrain skin sidecar, hd/jkgm/lightmaps/<level>.jkls (format in
+// tools/lightbake/terrain_skin.py). Loaded and freed with the level's light map.
+static void std3D_SkinFree(void)
+{
+    if (std3D_skinVbo) glDeleteBuffers(1, &std3D_skinVbo);
+    std3D_skinVbo = 0;
+    free(std3D_skinFirst);
+    free(std3D_skinCount);
+    free(std3D_skinVisIdx);
+    std3D_skinFirst = std3D_skinCount = NULL;
+    std3D_skinVisIdx = NULL;
+    std3D_skinNum = 0;
+}
+
+static void std3D_SkinLoad(SithWorld* w)
+{
+    char name[64], path[128];
+    int i;
+    for (i = 0; i < 63 && w->map_jkl_fname[i] && w->map_jkl_fname[i] != '.'; i++)
+        name[i] = (char)tolower((unsigned char)w->map_jkl_fname[i]);
+    name[i] = 0;
+    snprintf(path, sizeof(path), "jkgm/lightmaps/%s.jkls", name);
+    FILE* f = fopen(path, "rb");
+    if (!f) return;
+    char magic[4];
+    uint32_t hdr[3];
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "JKLS", 4) || fread(hdr, 4, 3, f) != 3 || hdr[0] != 1
+        || (int)hdr[1] != w->numVertices) {
+        stdPlatform_Printf("skin: %s is not a version 1 skin for this level, ignored\n", path);
+        fclose(f);
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f) - 16;
+    fseek(f, 16, SEEK_SET);
+    uint8_t* raw = (uint8_t*)malloc(size > 0 ? (size_t)size : 1);
+    float* verts = (float*)malloc(size > 0 ? (size_t)size : 1);
+    std3D_skinFirst = (uint32_t*)calloc(w->numSurfaces, sizeof(uint32_t));
+    std3D_skinCount = (uint32_t*)calloc(w->numSurfaces, sizeof(uint32_t));
+    std3D_skinVisIdx = (int*)calloc(w->numSurfaces, sizeof(int));
+    int ok = raw && verts && std3D_skinFirst && std3D_skinCount && std3D_skinVisIdx && size > 0
+             && fread(raw, 1, (size_t)size, f) == (size_t)size;
+    fclose(f);
+    size_t pos = 0, nv = 0;
+    for (uint32_t k = 0; ok && k < hdr[2]; k++) {
+        uint32_t rec[2];
+        if (pos + 8 > (size_t)size) { ok = 0; break; }
+        memcpy(rec, raw + pos, 8);
+        pos += 8;
+        size_t bytes = (size_t)rec[1] * 3 * 5 * sizeof(float);
+        if (rec[0] >= (uint32_t)w->numSurfaces || pos + bytes > (size_t)size) { ok = 0; break; }
+        memcpy(verts + nv * 5, raw + pos, bytes);
+        pos += bytes;
+        std3D_skinFirst[rec[0]] = (uint32_t)nv;
+        std3D_skinCount[rec[0]] = rec[1] * 3;
+        nv += (size_t)rec[1] * 3;
+    }
+    free(raw);
+    if (!ok || !nv) {
+        stdPlatform_Printf("skin: %s is truncated, ignored\n", path);
+        free(verts);
+        std3D_SkinFree();
+        return;
+    }
+    std3D_skinNum = w->numSurfaces;
+    glGenBuffers(1, &std3D_skinVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, std3D_skinVbo);
+    glBufferData(GL_ARRAY_BUFFER, nv * 5 * sizeof(float), verts, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, world_vbo_all);
+    free(verts);
+    stdPlatform_Printf("skin: %s, %u surfaces, %zu triangles\n", path, hdr[2], nv / 3);
+}
+
+void std3D_DoTex(rdDDrawSurface* tex, rdTri* tri, int tris_left);
+
+// Draw the skin of every skinned level face in this render list, after the list itself (the flat
+// faces themselves are left out of the list's draw).
+static int std3D_SkinActive(void)
+{
+    return std3D_skinVbo && jkPlayer_bTerrainSkin && uniform_worldSpace >= 0 && rdCamera_g_pCurCamera
+           && rdCamera_g_pCurCamera->pClipFrustum && !jkGuiBuildMulti_bRendering;
+}
+
+// The world surface whose skin replaces this triangle, or -1.
+static int std3D_SkinSurface(const D3DVERTEX* vertexes, const rdTri* tri)
+{
+    int s = (int)(vertexes[tri->v1].ny + 0.5f) - 1;
+    if (s < 0 || s >= std3D_skinNum || !std3D_skinCount[s] || (tri->flags & 0x600)) return -1;
+    return s;
+}
+
+static void std3D_SkinDraw(D3DVERTEX* vertexes, rdTri* tris, int numTris)
+{
+    if (!std3D_SkinActive())
+        return;
+    int numVis = 0;
+    for (int j = 0; j < numTris; j++) {
+        int s = std3D_SkinSurface(vertexes, &tris[j]);
+        if (s < 0)
+            continue;
+        int k = std3D_skinVisIdx[s] - 1;
+        if (k < 0) {
+            if (numVis >= STD3D_SKIN_MAX_VIS) continue;
+            k = numVis++;
+            std3D_skinVisIdx[s] = k + 1;
+            memset(&std3D_skinVis[k], 0, sizeof(std3D_skinVis[k]));
+            std3D_skinVis[k].surf = s;
+            std3D_skinVis[k].tri = tris[j];
+        }
+        int vi[3] = {tris[j].v1, tris[j].v2, tris[j].v3};
+        for (int c = 0; c < 3; c++) {
+            const uint8_t* b = (const uint8_t*)&vertexes[vi[c]].color;
+            for (int q = 0; q < 4; q++) std3D_skinVis[k].col[q] += b[q] / 255.0f;
+            std3D_skinVis[k].light += vertexes[vi[c]].lightLevel;
+            std3D_skinVis[k].n++;
+        }
+    }
+    if (!numVis) return;
+
+    GLboolean bCull = glIsEnabled(GL_CULL_FACE);
+    glDisable(GL_CULL_FACE);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glUniform1i(uniform_blend_mode, D3DBLEND_ONE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glUniform1i(uniform_sky, 0);
+    glUniform1i(uniform_model, 0);
+    glUniform1i(uniform_saberBlade, 0);
+    glUniform1i(uniform_saberRgbEnabled, 0);
+    glUniform1i(uniform_worldSpace, 1);
+    glUniform3f(uniform_skinCam, rdCamera_g_camMatrix.scale.x, rdCamera_g_camMatrix.scale.y, rdCamera_g_camMatrix.scale.z);
+    glUniform1f(uniform_skinFar, rdCamera_g_pCurCamera->pClipFrustum->farPlane);
+    glUniform3fv(uniform_skyWX, 1, &std3D_skyWorldAxes[0]);
+    glUniform3fv(uniform_skyWY, 1, &std3D_skyWorldAxes[3]);
+    glUniform3fv(uniform_skyWZ, 1, &std3D_skyWorldAxes[6]);
+
+    glBindBuffer(GL_ARRAY_BUFFER, std3D_skinVbo);
+    glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)0);
+    glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)(3 * sizeof(float)));
+    glDisableVertexAttribArray(attribute_v_color);
+    glDisableVertexAttribArray(attribute_v_light);
+    if (attribute_v_invz >= 0) { glDisableVertexAttribArray(attribute_v_invz); glVertexAttrib1f(attribute_v_invz, 0.0f); }
+    if (attribute_v_glow >= 0) { glDisableVertexAttribArray(attribute_v_glow); glVertexAttrib1f(attribute_v_glow, 0.0f); }
+    if (attribute_v_lmSurf >= 0) glDisableVertexAttribArray(attribute_v_lmSurf);
+
+    for (int k = 0; k < numVis; k++) {
+        std3D_SkinVisRec* r = &std3D_skinVis[k];
+        float inv = r->n ? 1.0f / r->n : 1.0f;
+        std3D_DoTex(r->tri.texture, &r->tri, 1);
+        glVertexAttrib4f(attribute_v_color, r->col[0] * inv, r->col[1] * inv, r->col[2] * inv, r->col[3] * inv);
+        glVertexAttrib1f(attribute_v_light, r->light * inv);
+        if (attribute_v_lmSurf >= 0) glVertexAttrib1f(attribute_v_lmSurf, (float)(r->surf + 1));
+        glDrawArrays(GL_TRIANGLES, (GLint)std3D_skinFirst[r->surf], (GLsizei)std3D_skinCount[r->surf]);
+        std3D_skinVisIdx[r->surf] = 0;
+    }
+
+    glUniform1i(uniform_worldSpace, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, world_vbo_all);
+    glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, x));
+    glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, tu));
+    glEnableVertexAttribArray(attribute_v_color);
+    glEnableVertexAttribArray(attribute_v_light);
+    if (attribute_v_invz >= 0) glEnableVertexAttribArray(attribute_v_invz);
+    if (attribute_v_glow >= 0) glEnableVertexAttribArray(attribute_v_glow);
+    if (attribute_v_lmSurf >= 0) glEnableVertexAttribArray(attribute_v_lmSurf);
+    if (bCull) glEnable(GL_CULL_FACE);
+}
+
 static int std3D_LightmapUpdate(void)
 {
     SithWorld* w = sithWorld_g_pCurrentWorld;
@@ -1286,6 +1468,8 @@ static int std3D_LightmapUpdate(void)
         strncpy(std3D_lmWorldName, w->map_jkl_fname, sizeof(std3D_lmWorldName));
         std3D_LightmapFree();
         std3D_LightmapLoad(w);
+        std3D_SkinFree(); // Added (remaster): terrain skin
+        std3D_SkinLoad(w);
     }
     return std3D_lmReady;
 }
@@ -3966,11 +4150,14 @@ void std3D_DrawRenderList()
 
     int last_tex_idx = 0;
     //GLushort* world_data_elements = malloc(sizeof(GLushort) * 3 * GL_tmpTrisAmt);
+    int bSkin = std3D_SkinActive(); // Added (remaster): a skinned face is drawn as its skin instead
     for (int j = 0; j < GL_tmpTrisAmt; j++)
     {
         world_data_elements[(j*3)+0] = tris[j].v1;
         world_data_elements[(j*3)+1] = tris[j].v2;
         world_data_elements[(j*3)+2] = tris[j].v3;
+        if (bSkin && std3D_SkinSurface(vertexes, &tris[j]) >= 0)
+            world_data_elements[(j*3)+1] = world_data_elements[(j*3)+2] = tris[j].v1; // degenerate: not drawn
     }
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, world_ibo_triangle);
@@ -4175,6 +4362,8 @@ void std3D_DrawRenderList()
     {
         glDrawElements(GL_TRIANGLES, remaining_batch * 3, GL_UNSIGNED_SHORT, (GLvoid*)((intptr_t)&world_data_elements[last_tex_idx * 3] - (intptr_t)&world_data_elements[0]));
     }
+
+    std3D_SkinDraw(vertexes, tris, GL_tmpTrisAmt); // Added (remaster): terrain skin
 
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 

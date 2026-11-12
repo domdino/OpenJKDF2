@@ -78,6 +78,12 @@ in vec3 f_coord;
 // Static, baked level light still arrives per vertex in f_color; only dynamic lights are
 // computed here, plus Blinn-Phong highlights for the wet look.
 noperspective in float f_invz;          // 1/(32 * camera-space depth)
+// Added (remaster): the terrain skin is projected on the GPU (default_v.glsl); its 1/depth comes
+// from gl_FragCoord.w (= 1 / (depth far)), which stays right where GL clips at the near plane.
+uniform int u_worldSpace;
+uniform float u_skinFar;
+float skin_invz() { return u_worldSpace != 0 ? gl_FragCoord.w * u_skinFar / 32.0 : f_invz; }
+#define INVZ skin_invz()
 uniform int u_ppl;                      // 1 = per-pixel lighting on
 uniform int u_pplNumLights;
 uniform vec4 u_pplLightPos[32];         // camera space xyz (x right, y forward, z up), w = radius
@@ -111,7 +117,7 @@ vec2 ssr_octEncode(vec3 n)
 // engine's projection: x = halfW + X*f/Y, y = halfH - Z*f/Y.
 vec3 ppl_viewPos()
 {
-    float depth = 1.0 / (32.0 * max(f_invz, 1e-7));
+    float depth = 1.0 / (32.0 * max(INVZ, 1e-7));
     vec2 c = vec2(gl_FragCoord.x * (u_pplScreen.x / u_pplScreen.z),
                   (u_pplScreen.w - gl_FragCoord.y) * (u_pplScreen.y / u_pplScreen.w));
     return vec3((c.x - u_pplProj.x) * depth / u_pplProj.z,
@@ -558,7 +564,7 @@ void main(void)
     // material, normals), and fades out with distance. displacement_factor = depth in UV units.
     vec2 uvp = f_uv;
     vec2 duvx = dFdx(f_uv), duvy = dFdy(f_uv);
-    if (displacement_factor > 0.0 && u_ppl != 0 && f_invz > 0.0)
+    if (displacement_factor > 0.0 && u_ppl != 0 && INVZ > 0.0)
     {
         vec3 dp1 = dFdx(ppl_P), dp2 = dFdy(ppl_P);
         vec3 dp2perp = cross(dp2, ppl_N), dp1perp = cross(ppl_N, dp1);
@@ -620,7 +626,7 @@ void main(void)
     vec4 vertex_color = f_color;
     // Added (remaster): baked light replaces the 1997 corner light (plus a share of it as fill).
     vec3 lm_light;
-    bool lm_has = u_ppl != 0 && f_invz > 0.0 && lm_sample(ppl_P, lm_light);
+    bool lm_has = u_ppl != 0 && INVZ > 0.0 && lm_sample(ppl_P, lm_light);
     // The 1997 light times fill is a floor, not an addition: it keeps places the bake missed
     // from going black without flattening the lit areas.
     if (lm_has) vertex_color.rgb = max(lm_light, vertex_color.rgb * u_lmParams.x);
@@ -704,7 +710,7 @@ void main(void)
     main_color *= albedoFactor_copy;
 
     // Added (remaster): add dynamic lights per pixel on top of the baked vertex light.
-    if (u_ppl != 0 && f_invz > 0.0 && tex_mode != TEX_MODE_TEST)
+    if (u_ppl != 0 && INVZ > 0.0 && tex_mode != TEX_MODE_TEST)
     {
         vec3 ppl_diff;
         ppl_compute(ppl_P, ppl_N, mat_rough, mat_metal, ppl_diff, ppl_spec);
@@ -874,7 +880,7 @@ if (u_fixtureBloom > 0.0 && f_lmSurf > 0.5 && orig_alpha > 0.99 && blend_mode !=
     // Added (remaster): reflection data
     fragColorSSR = vec4(0.0);
     fragColorMat = vec4(0.0);
-    if (u_ssrWrite != 0 && f_invz > 0.0)
+    if (u_ssrWrite != 0 && INVZ > 0.0)
     {
         bool bSolid = (blend_mode != D3DBLEND_SRCALPHA && blend_mode != D3DBLEND_INVSRCALPHA
                        && orig_alpha > 0.99);

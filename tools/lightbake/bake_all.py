@@ -68,7 +68,7 @@ def run(cmd, tag):
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     out = (p.stdout or "") + (p.stderr or "")
     keep = [l for l in out.splitlines() if any(k in l for k in
-            ("light map:", "fit:", "VIS: done", "calibration", "final bake", "sun from", "SIDECAR", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
+            ("light map:", "terrain skin", "fit:", "VIS: done", "calibration", "final bake", "sun from", "SIDECAR", "PROBES", "VOLUME", "volume points", "Error", "FAILED", "Traceback"))]
     for l in keep:
         log("  " + l.strip())
     if p.returncode != 0 or "FAILED" in out:
@@ -90,7 +90,8 @@ def blender(script, *args):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     rebake = set(sys.argv[sys.argv.index("--rebake") + 1].split(",")) if "--rebake" in sys.argv else set()
-    args = [a for a in args if a not in rebake]
+    rb_arg = sys.argv[sys.argv.index("--rebake") + 1] if "--rebake" in sys.argv else None
+    args = [a for a in args if a not in rebake and a != rb_arg]
     # No levels named: all of them (with --rebake alone, only the rebakes).
     if not args and (not rebake or "--skip-done" in sys.argv or "--probes-only" in sys.argv or "--volume-only" in sys.argv):
         sys.path.insert(0, os.path.dirname(HERE))
@@ -129,6 +130,9 @@ def main():
                 continue
             if not run(["python3", "-I", "tools/lightbake/fit_lights.py", folder, "--occlusion"], "fit"):
                 continue
+        # Terrain skin (stage 3): lumpy rock over the flat terrain faces, baked with the rest.
+        if not run(["python3", "-I", "tools/lightbake/terrain_skin.py", level], "skin"):
+            continue
         sky, preset = sky_for(os.path.join(ROOT, folder))
         log("  sky %s (%s)" % (sky, preset))
         if not run(blender("tools/blender/lightbake.py", folder, *BAKE_ARGS, "--sky", sky, *sun_args(preset)), "bake"):

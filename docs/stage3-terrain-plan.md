@@ -1,6 +1,6 @@
 # Terrain plan: more polygons for rock, cliffs and canyons
 
-Status: Dom chose parallax, then the skin (2026-11-12). Parallax is in (with a loader fix that finally shows the Texture God textures); the skin and rubble are next.
+Status: Dom chose parallax, then the skin (2026-11-12). Parallax is in (with a loader fix that finally shows the Texture God textures). The skin works end to end on the tower (generator, bake, engine; see DECISIONS) but the gain is subtle so far; rubble is next.
 
 ## What the terrain is
 

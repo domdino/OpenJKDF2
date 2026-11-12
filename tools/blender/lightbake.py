@@ -53,10 +53,48 @@ def build(d, folder, sky_rgb, glow_strength):
     verts, faces, uv_tex, uv_lm, orig, mat_index = [], [], [], [], [], []
     W, H = d["atlas"]
     mats = {}
+    # Terrain skin (tools/lightbake/terrain_skin.py): skinned faces are baked as their skin, so
+    # the light map holds the light and shadow of every lump. --no-skin bakes the flat faces.
+    skin, skin_vid, smooth = {}, {}, []
+    sp = os.path.join(folder, "skin.npz")
+    if os.path.exists(sp) and "--no-skin" not in sys.argv:
+        import numpy as np
+        z = np.load(sp)
+        sP, sT, sUV, sS = z["pos"], z["tris"], z["uv"], z["surf"]
+        order = np.argsort(sS, kind="stable")
+        bounds = np.searchsorted(sS[order], np.unique(sS), side="left").tolist() + [len(order)]
+        for a, b in zip(bounds[:-1], bounds[1:]):
+            skin[int(sS[order[a]])] = order[a:b]
+        log("terrain skin: %d surfaces, %d triangles" % (len(skin), len(sT)))
     for s in d["surfaces"]:
         key = ("sky" if s["sky"] else s["mat"])
         if key not in mats:
             mats[key] = len(mats)
+        if s["index"] in skin and "lm" in s:
+            lm = s["lm"]
+            o, ua, va = Vector(lm["origin"]), Vector(lm["u"]), Vector(lm["v"])
+            dens = lm.get("d", d["density"])
+            c = min(float(np.mean(s["intensities"])), 2.0) if s["intensities"] else 1.0
+            for t in skin[s["index"]]:
+                corners = []
+                for k in range(3):
+                    vi = int(sT[t, k])
+                    if vi not in skin_vid:          # shared, so the skin bakes smooth, not faceted
+                        skin_vid[vi] = len(verts)
+                        verts.append(tuple(float(x) for x in sP[vi]))
+                    corners.append(skin_vid[vi])
+                    p = sP[vi]
+                    q = Vector(p) - o
+                    # Inside the face's own rectangle (the lumps can reach a little past it).
+                    x = min(max(lm["x"] + q.dot(ua) * dens, lm["x"] + 0.5), lm["x"] + lm["w"] - 0.5)
+                    y = min(max(lm["y"] + q.dot(va) * dens, lm["y"] + 0.5), lm["y"] + lm["h"] - 0.5)
+                    uv_lm.append((x / W, y / H))
+                    uv_tex.append((float(sUV[t, k, 0]), 1.0 - float(sUV[t, k, 1])))
+                    orig.append(c)
+                faces.append(corners)
+                smooth.append(len(faces) - 1)
+                mat_index.append(mats[key])
+            continue
         base = len(verts)
         P = [d["verts"][v] for v in s["v"]]
         verts += P
@@ -87,6 +125,8 @@ def build(d, folder, sky_rgb, glow_strength):
         col.data[i].color = (c, c, c, 1.0)
     for p, mi in zip(me.polygons, mat_index):
         p.material_index = mi
+    for i in smooth:
+        me.polygons[i].use_smooth = True
     me.uv_layers.active = ll
     obj = bpy.data.objects.new("level", me)
     bpy.context.scene.collection.objects.link(obj)

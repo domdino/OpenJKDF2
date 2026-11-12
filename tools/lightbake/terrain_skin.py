@@ -347,7 +347,7 @@ def rubble(d, creases, P, Pd, density, dmin, dmax, max_rocks, seed=7):
     skin (P -> Pd), take the wall's texture and are drawn with the wall."""
     from scipy.spatial import cKDTree
     rng = np.random.default_rng(seed)
-    shapes = (icosphere(0), icosphere(1))   # 20 triangles for the small ones, 80 for the big
+    shapes = (icosphere(0), icosphere(1))   # 20 triangles under 30 cm, 80 above
     tree = cKDTree(P)
     rocks = []
     step = 0.005
@@ -371,7 +371,7 @@ def rubble(d, creases, P, Pd, density, dmin, dmax, max_rocks, seed=7):
         keep = rng.choice(len(rocks), max_rocks, replace=False)
         rocks = [rocks[i] for i in sorted(keep)]
 
-    pos, tris, uvs, surf = [], [], [], []
+    pos, tris, uvs, surf, nrm = [], [], [], [], []
     scale_cache = {}
     for base, r, fn, ws in rocks:
         _, i = tree.query(base)
@@ -402,19 +402,29 @@ def rubble(d, creases, P, Pd, density, dmin, dmax, max_rocks, seed=7):
         off = rng.random(2)
         b0 = sum(len(p) for p in pos)
         pos.append(W)
-        tri = IF + b0
-        tris.append(tri)
-        for f in IF:
-            A, B, C = W[f]
-            n = np.abs(np.cross(B - A, C - A))
-            ax2 = int(np.argmax(n))
-            ij = [x for x in range(3) if x != ax2]
-            uvs.append(W[f][:, ij] * sc + off)
+        tris.append(IF + b0)
+        # Smooth corner normals (the engine lights rocks with these, not the flat facets).
+        fnrm = np.cross(W[IF[:, 1]] - W[IF[:, 0]], W[IF[:, 2]] - W[IF[:, 0]])
+        vn = np.zeros_like(W)
+        for c in range(3):
+            np.add.at(vn, IF[:, c], fnrm)
+        nrm.append(vn / (np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12))
+        # One texture projection for the whole rock (no seams between facets), facing the open
+        # side: between up off the floor and out from the wall.
+        wn = np.array(ws["normal"], float)
+        ax = fn + 0.7 * (wn - np.dot(wn, fn) * fn)
+        ax /= np.linalg.norm(ax)
+        e1 = np.cross(ax, [0.0, 0.0, 1.0] if abs(ax[2]) < 0.9 else [1.0, 0.0, 0.0])
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(ax, e1)
+        vuv = np.stack([W @ e1, W @ e2], 1) * sc + off
+        uvs.extend(vuv[IF])
         surf += [k] * len(IF)
     if not rocks:
         return None
     return (np.concatenate(pos).astype(np.float32), np.concatenate(tris).astype(np.int32),
-            np.array(uvs, np.float32), np.array(surf, np.int32), len(rocks), len(creases))
+            np.array(uvs, np.float32), np.array(surf, np.int32), len(rocks), len(creases),
+            np.concatenate(nrm).astype(np.float32))
 
 
 def main():
@@ -443,8 +453,8 @@ def main():
                 arg("--rocks-max", 40000, int))
     rpath = os.path.join(folder, "rubble.npz")
     if rb:
-        rP, rT, rUV, rS, nrocks, ncre = rb
-        np.savez_compressed(rpath, pos=rP, tris=rT, uv=rUV, surf=rS)
+        rP, rT, rUV, rS, nrocks, ncre, rN = rb
+        np.savez_compressed(rpath, pos=rP, tris=rT, uv=rUV, surf=rS, nrm=rN)
         log("rubble: %d rocks along %d floor creases, %d triangles" % (nrocks, ncre, len(rT)))
     elif os.path.exists(rpath):
         os.remove(rpath)

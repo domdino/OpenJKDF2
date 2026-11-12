@@ -11,7 +11,8 @@ gets its own shading, shadows and contact darkness.
 Writes hd/jkgm/lightmaps/<level>.jklr (little endian):
     char[4] "JKLR", u32 version (1), u32 world vertex count (checked against the level),
     u32 surface count S, then S x { u32 surface (the wall the rocks belong to), u32 triangles T,
-                                    T x 3 x f32 x, y, z, u, v, r, g, b (light, light map units) }
+                                    T x 3 x f32 x, y, z, u, v, r, g, b (light, light map units),
+                                                nx, ny, nz (smooth normal) }  (version 2)
 """
 import json
 import os
@@ -102,14 +103,15 @@ def main():
     log("%d corners baked in %.0f s; mean %.3f, max %.2f" % (len(light), time.time() - t0, float(light.mean()), float(light.max())))
 
     P = z["pos"].astype(np.float32)
+    N = z["nrm"].astype(np.float32)
     order = np.argsort(S, kind="stable")
     ids = np.unique(S)
     with open(out, "wb") as f:
         f.write(b"JKLR")
-        f.write(struct.pack("<3I", 1, len(d["verts"]), len(ids)))
+        f.write(struct.pack("<3I", 2, len(d["verts"]), len(ids)))
         for si in ids:
             sel = order[S[order] == si]
-            rec = np.concatenate([P[T[sel]], UV[sel], light[T[sel]]], 2).astype("<f4")   # T x 3 x 8
+            rec = np.concatenate([P[T[sel]], UV[sel], light[T[sel]], N[T[sel]]], 2).astype("<f4")   # T x 3 x 11
             f.write(struct.pack("<2I", int(si), len(sel)))
             f.write(rec.tobytes())
     log("SIDECAR %s, %.1f MB" % (os.path.relpath(out, ROOT), os.path.getsize(out) / 1e6))

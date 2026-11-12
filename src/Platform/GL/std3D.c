@@ -1311,8 +1311,8 @@ static void std3D_SkinFree(void)
 
 // Read a skin-style sidecar (header, then per surface: surface, triangles, 3 x nf floats per
 // triangle) into a GL buffer and per-surface first/count tables. Returns the vertex count.
-static size_t std3D_SkinReadFile(SithWorld* w, const char* name, const char* ext, const char* magicWant, int nf,
-                                 GLuint* pVbo, uint32_t** ppFirst, uint32_t** ppCount)
+static size_t std3D_SkinReadFile(SithWorld* w, const char* name, const char* ext, const char* magicWant, uint32_t version,
+                                 int nf, GLuint* pVbo, uint32_t** ppFirst, uint32_t** ppCount)
 {
     char path[128];
     snprintf(path, sizeof(path), "jkgm/lightmaps/%s.%s", name, ext);
@@ -1320,9 +1320,9 @@ static size_t std3D_SkinReadFile(SithWorld* w, const char* name, const char* ext
     if (!f) return 0;
     char magic[4];
     uint32_t hdr[3];
-    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, magicWant, 4) || fread(hdr, 4, 3, f) != 3 || hdr[0] != 1
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, magicWant, 4) || fread(hdr, 4, 3, f) != 3 || hdr[0] != version
         || (int)hdr[1] != w->numVertices) {
-        stdPlatform_Printf("skin: %s is not a version 1 file for this level, ignored\n", path);
+        stdPlatform_Printf("skin: %s is not a version %u file for this level, ignored\n", path, version);
         fclose(f);
         return 0;
     }
@@ -1375,12 +1375,12 @@ static void std3D_SkinLoad(SithWorld* w)
     for (i = 0; i < 63 && w->map_jkl_fname[i] && w->map_jkl_fname[i] != '.'; i++)
         name[i] = (char)tolower((unsigned char)w->map_jkl_fname[i]);
     name[i] = 0;
-    if (!std3D_SkinReadFile(w, name, "jkls", "JKLS", 5, &std3D_skinVbo, &std3D_skinFirst, &std3D_skinCount))
+    if (!std3D_SkinReadFile(w, name, "jkls", "JKLS", 1, 5, &std3D_skinVbo, &std3D_skinFirst, &std3D_skinCount))
         return;
     std3D_skinVisIdx = (int*)calloc(w->numSurfaces, sizeof(int));
     std3D_skinNum = std3D_skinVisIdx ? w->numSurfaces : 0;
     // Rubble along the creases, drawn with the wall it lies against (light baked per corner).
-    std3D_SkinReadFile(w, name, "jklr", "JKLR", 8, &std3D_rockVbo, &std3D_rockFirst, &std3D_rockCount);
+    std3D_SkinReadFile(w, name, "jklr", "JKLR", 2, 11, &std3D_rockVbo, &std3D_rockFirst, &std3D_rockCount);
 }
 
 void std3D_DoTex(rdDDrawSurface* tex, rdTri* tri, int tris_left);
@@ -1465,15 +1465,22 @@ static void std3D_SkinDraw(D3DVERTEX* vertexes, rdTri* tris, int numTris)
         glDrawArrays(GL_TRIANGLES, (GLint)std3D_skinFirst[r->surf], (GLsizei)std3D_skinCount[r->surf]);
     }
 
-    // Rubble: its own baked light per corner (u_worldSpace 2), no light-map lookup.
-    if (std3D_rockVbo) {
+    // Rubble: its own baked light per corner (u_worldSpace 2), no light-map lookup, and a smooth
+    // normal per corner carried in the depth, glow and light-map slots (unused by rocks).
+    if (std3D_rockVbo && attribute_v_invz >= 0 && attribute_v_glow >= 0 && attribute_v_lmSurf >= 0) {
+        const GLsizei st = 11 * sizeof(float);
         glUniform1i(uniform_worldSpace, 2);
         glBindBuffer(GL_ARRAY_BUFFER, std3D_rockVbo);
-        glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (GLvoid*)0);
-        glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (GLvoid*)(3 * sizeof(float)));
-        glVertexAttribPointer(attribute_v_color, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (GLvoid*)(5 * sizeof(float)));
+        glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, st, (GLvoid*)0);
+        glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, st, (GLvoid*)(3 * sizeof(float)));
+        glVertexAttribPointer(attribute_v_color, 3, GL_FLOAT, GL_FALSE, st, (GLvoid*)(5 * sizeof(float)));
+        glVertexAttribPointer(attribute_v_invz, 1, GL_FLOAT, GL_FALSE, st, (GLvoid*)(8 * sizeof(float)));
+        glVertexAttribPointer(attribute_v_glow, 1, GL_FLOAT, GL_FALSE, st, (GLvoid*)(9 * sizeof(float)));
+        glVertexAttribPointer(attribute_v_lmSurf, 1, GL_FLOAT, GL_FALSE, st, (GLvoid*)(10 * sizeof(float)));
         glEnableVertexAttribArray(attribute_v_color);
-        if (attribute_v_lmSurf >= 0) glVertexAttrib1f(attribute_v_lmSurf, 0.0f);
+        glEnableVertexAttribArray(attribute_v_invz);
+        glEnableVertexAttribArray(attribute_v_glow);
+        glEnableVertexAttribArray(attribute_v_lmSurf);
         for (int k = 0; k < numVis; k++) {
             std3D_SkinVisRec* r = &std3D_skinVis[k];
             if (!std3D_rockCount[r->surf]) continue;
@@ -1491,6 +1498,9 @@ static void std3D_SkinDraw(D3DVERTEX* vertexes, rdTri* tris, int numTris)
     glVertexAttribPointer(attribute_coord3d, 3, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, x));
     glVertexAttribPointer(attribute_v_uv, 2, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, tu));
     glVertexAttribPointer(attribute_v_color, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, color));
+    if (attribute_v_invz >= 0) glVertexAttribPointer(attribute_v_invz, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, nx));
+    if (attribute_v_glow >= 0) glVertexAttribPointer(attribute_v_glow, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, nz));
+    if (attribute_v_lmSurf >= 0) glVertexAttribPointer(attribute_v_lmSurf, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, ny));
     glEnableVertexAttribArray(attribute_v_color);
     glEnableVertexAttribArray(attribute_v_light);
     if (attribute_v_invz >= 0) glEnableVertexAttribArray(attribute_v_invz);

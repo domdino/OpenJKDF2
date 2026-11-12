@@ -23,6 +23,7 @@ out vec2 f_uv;
 out vec3 f_coord;
 noperspective out float f_invz; // 1/depth is linear in screen space, so no perspective correction
 flat out float f_lmSurf;
+out vec3 f_rockN; // Added (remaster): crease rubble's smooth normal, camera space
 out float f_glow;
 
 void main(void)
@@ -53,4 +54,10 @@ void main(void)
     f_light = v_light;
     f_lmSurf = v_lmSurf;
     f_glow = v_glow;
+    f_rockN = vec3(0.0);
+    if (u_worldSpace == 2) {   // rubble: v_invz, v_glow, v_lmSurf carry its world normal
+        f_rockN = v_invz * u_skyWX + v_glow * u_skyWY + v_lmSurf * u_skyWZ;
+        f_lmSurf = 0.0;
+        f_glow = 0.0;
+    }
 }

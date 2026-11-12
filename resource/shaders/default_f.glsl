@@ -516,6 +516,7 @@ vec4 bilinear_paletted_light(float index)
 // Added (remaster): baked light maps (std3D_LightmapUpdate). Each level face knows its world
 // surface; its record says how world positions map into the light map atlas.
 flat in float f_lmSurf;
+in vec3 f_rockN; // Added (remaster): crease rubble's smooth normal, camera space
 in float f_glow; // Added (remaster): light-probe overbright on models (rdCache), in the vertex light's hue
 uniform int u_lmOn;
 uniform sampler2D u_lmAtlas;
@@ -556,6 +557,7 @@ void main(void)
     vec3 ppl_P = ppl_viewPos();
     vec3 ppl_N = normalize(cross(dFdx(ppl_P), dFdy(ppl_P)));
     vec3 ppl_spec = vec3(0.0);
+    if (u_worldSpace == 2 && dot(f_rockN, f_rockN) > 1e-8) ppl_N = normalize(f_rockN); // rubble: smooth, not faceted
     if (dot(ppl_N, -ppl_P) < 0.0) ppl_N = -ppl_N;
 
     // Added (remaster): parallax occlusion from the HD pack's height map (displacement_map:

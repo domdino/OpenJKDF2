@@ -63,6 +63,7 @@ That breaks down into concrete engine work:
 - [x] Light bake in game: baked light maps replace the 1997 corner light on six test levels (`r_lightmaps`, in the remaster preset) ([plan](../docs/stage2-lightbake-plan.md))
 - [x] Light probes: characters and props lit by the bake around them (colour, direction, floor light)
 - [ ] Light bake: tune and bake every level (sun for day levels)
+- [ ] Atmosphere: volumetric fog lit by the bake, height fog, smoke and steam (plan: docs/stage2-atmosphere-plan.md)
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist

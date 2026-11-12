@@ -252,6 +252,20 @@ def main():
         if ns:
             zs += [(rest[ns[0]] @ [v[0], v[1], v[2], 1])[2] for v in me.verts]
     jk_lo, jk_hi = min(zs), max(zs)
+    # --scale-ref <standing .3do>: size from a standing model of the same character. A model
+    # baked lying down (the Nar Shaddaa bar drunk) is only as tall as it is thick, which made the
+    # character half size and then stretched thin to reach the joints.
+    jk_height = jk_hi - jk_lo
+    if "--scale-ref" in argv:
+        ref = jk3do.load(argv[argv.index("--scale-ref") + 1])
+        rrest = jk3do.rest_matrices(ref)
+        rz = []
+        for k, me in enumerate(ref.geosets[0]):
+            ns = [i for i, nd in enumerate(ref.nodes) if nd.mesh == k]
+            if ns:
+                rz += [(rrest[ns[0]] @ [v[0], v[1], v[2], 1])[2] for v in me.verts]
+        jk_height = max(rz) - min(rz)
+        log("scale from %s: height %.4f (the target is %.4f tall)" % (os.path.basename(argv[argv.index("--scale-ref") + 1]), jk_height, jk_hi - jk_lo))
 
     for o in list(bpy.data.objects):  # factory scene: cube, camera, light
         bpy.data.objects.remove(o, do_unlink=True)
@@ -264,7 +278,7 @@ def main():
     # Global fit: face +Y, scale to JK height, stand on JK's floor, centred on JK's hip
     pts = [o.matrix_world @ v.co for o in meshes for v in o.data.vertices]
     ja_lo, ja_hi = min(p.z for p in pts), max(p.z for p in pts)
-    s = (jk_hi - jk_lo) / (ja_hi - ja_lo)
+    s = jk_height / (ja_hi - ja_lo)
     pelvis = arm.matrix_world @ arm.data.bones["pelvis"].head_local
     rot = Matrix.Rotation(math.pi, 4, "Z")
     p2 = rot @ pelvis
@@ -274,7 +288,7 @@ def main():
     for o in tops:
         o.matrix_world = G @ o.matrix_world
     bpy.context.view_layer.update()
-    log("scale %.5f, JA height %.3f -> JK %.4f" % (s, ja_hi - ja_lo, jk_hi - jk_lo))
+    log("scale %.5f, JA height %.3f -> JK %.4f" % (s, ja_hi - ja_lo, jk_height))
 
     # Snap limbs onto JK joints (armature space), parents first. Connected bones are pinned to
     # their parent's tip and can't be moved, so disconnect them first (rest pose unchanged).

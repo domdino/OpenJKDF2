@@ -45,8 +45,10 @@ CAST = {
     "ugalt": ("ugnaught", "default", "Ugnaught"),
     # The passed-out drunk on the Nar Shaddaa bar table ("tuskensoused", model thout: a Trandoshan
     # lying down). A 4th field fits onto another JK model than the entry's own name.
-    "thout":  ("trandoshan", "default", "Passed-out Trandoshan"),
-    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout"),
+    # A 5th field sizes the character from a standing JK model (the lying one is only as tall as
+    # it is thick).
+    "thout":  ("trandoshan", "default", "Passed-out Trandoshan", "thout", "th"),
+    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout", "th"),
 }
 
 
@@ -93,13 +95,14 @@ def run(cmd, tag):
 def convert(name):
     ja, skin, title = CAST[name][:3]
     target = CAST[name][3] if len(CAST[name]) > 3 else name
+    scale_ref = ["--scale-ref", os.path.join(SRC, "3do", CAST[name][4] + ".3do")] if len(CAST[name]) > 4 else []
     out = os.path.join(ROOT, "hd", "models_ja", name)
     tpl = os.path.join(SRC, "3do", target + ".3do")
     glm = os.path.join(JA, "models", "players", ja, "model.glm")
     print("==", name, "->", ja, skin)
     if not run([BLENDER, "-b", "--factory-startup", "-noaudio", "--python",
                 os.path.join(ROOT, "tools", "blender", "ja_to_jk.py"), "--",
-                glm, JA, skin, tpl, out, name], "convert"):
+                glm, JA, skin, tpl, out, name, *scale_ref], "convert"):
         return False
     if not run([sys.executable, "-I", os.path.join(ROOT, "tools", "make_character_textures.py"), out, name], "textures"):
         return False

@@ -23,6 +23,8 @@
 #      CAPTURE_CMDS (cheats/console commands, ';'-separated, e.g. red5), CAPTURE_WEAPON (10 = saber),
 #      CAPTURE_SEQ=1 (save every timed frame and make NAME.mp4; use r_fpslimit=60 for real-time speed),
 #      CAPTURE_SIZE=WxH (window size in points, e.g. 1728x1117 = MacBook Retina; still off-screen)
+#      CAPTURE_ORIGINAL=1 (the 1997 game, for the left side of side-by-sides: original models, original
+#      textures, remaster 0, no filtering, whatever settings are passed)
 # Output: logs/captures/NAME.png and NAME.log; the stats line is printed.
 set -e
 
@@ -52,8 +54,18 @@ HDVIDEO="${CAPTURE_HDVIDEO:-$ROOT/hd/video}"
 [ -d "$HDVIDEO" ] && ln -s "$HDVIDEO" "$CAPROOT/hdvideo"
 # HD textures: on unless CAPTURE_HD=0 (for before/after comparisons).
 rm -f "$CAPROOT/jkgm"
-if [ "${CAPTURE_HD:-1}" = "1" ] && [ -d "$ROOT/hd/jkgm" ]; then
+ORIG="${CAPTURE_ORIGINAL:-0}"
+if [ "${CAPTURE_HD:-1}" = "1" ] && [ "$ORIG" != "1" ] && [ -d "$ROOT/hd/jkgm" ]; then
     ln -s "$ROOT/hd/jkgm" "$CAPROOT/jkgm"
+fi
+# The 1997 game: set the converted models (loose files in 3do) aside for this run only.
+ORIG_CVARS=""
+if [ "$ORIG" = "1" ]; then
+    ORIG_CVARS="remaster=0 r_enableTextureFilter=0"
+    if [ -d "$CAPROOT/3do" ]; then
+        mv "$CAPROOT/3do" "$CAPROOT/3do.remaster"
+        trap 'mv "$CAPROOT/3do.remaster" "$CAPROOT/3do"' EXIT INT TERM
+    fi
 fi
 
 # Default camera for level 1: the spawn room, facing the green sign (same room as
@@ -74,7 +86,7 @@ SDL_AUDIO_DRIVER=dummy \
 SDL_MAC_BACKGROUND_APP=1 \
 OPENJKDF2_ROOT="$CAPROOT" \
 OPENJKDF2_CAPTURE="$OUT_DIR/$NAME.png" \
-OPENJKDF2_CAPTURE_CVARS="$BASELINE $*" \
+OPENJKDF2_CAPTURE_CVARS="$BASELINE $* $ORIG_CVARS" \
 OPENJKDF2_CAPTURE_WARP="$WARP" \
 OPENJKDF2_CAPTURE_DELAY="${CAPTURE_DELAY:-8}" \
 OPENJKDF2_CAPTURE_FRAMES="${CAPTURE_FRAMES:-600}" \

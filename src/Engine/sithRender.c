@@ -24,7 +24,8 @@
 #include "Primitives/rdModel3.h"
 #include "Primitives/rdPrimit3.h"
 #include "World/jkPlayer.h"
-#include "Engine/sithGlowLights.h" // Added (remaster)
+#include "Engine/sithGlowLights.h"
+#include "Engine/sithLightProbes.h" // Added (remaster)
 #include "Gameplay/sithPlayer.h"
 #include "World/sithSector.h"
 #include "World/sithWorld.h"
@@ -3169,7 +3170,9 @@ int sithRender_RenderThing(SithThing *pThing)
     }
 #endif
 
+    sithLightProbes_pThingSector = pThing->sector; // Added (remaster): light probes
     ret = rdThing_Draw(&pThing->renderData, &pThing->orient);
+    sithLightProbes_pThingSector = NULL;
     rdVector_Zero3(&pThing->orient.scale);
     if (sithRender_pExtraThingRenderFunc && (pThing->flags & SITH_TF_RENDERWEAPON)) {
         sithRender_pExtraThingRenderFunc(pThing);

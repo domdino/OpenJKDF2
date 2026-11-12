@@ -122,6 +122,7 @@ rdProcEntry *rdCache_GetProcEntry()
     // Added: Try and prevent weird issues.
     out_procEntry->material = NULL;
     out_procEntry->lightmapSurface = -1; // Added (remaster): set by sithRender for level faces
+    out_procEntry->rgbLight = 0;
 
     return out_procEntry;
 }
@@ -714,7 +715,7 @@ int rdCache_SendFaceListToHardware()
             {
                 // MOTS added
 #ifdef JKM_LIGHTING
-                if (rdGetVertexColorMode() == 1) {
+                if (rdGetVertexColorMode() == 1 || active_6c->rgbLight) { // Added (remaster): || rgbLight
                     flex_t* iterRedIntense = active_6c->paRedIntensities;
                     flex_t* iterGreenIntense = active_6c->paGreenIntensities;
                     flex_t* iterBlueIntense = active_6c->paBlueIntensities;
@@ -843,7 +844,7 @@ int rdCache_SendFaceListToHardware()
                 else
                 {
                     // MOTS added
-                    if (rdGetVertexColorMode() != 1 || lighting_capability != 3)
+                    if ((rdGetVertexColorMode() != 1 && !active_6c->rgbLight) || lighting_capability != 3) // Added (remaster): rgbLight
                     {
                         if ( lighting_capability == 3 )
                             light_level = active_6c->vertexIntensities[vtx_idx];

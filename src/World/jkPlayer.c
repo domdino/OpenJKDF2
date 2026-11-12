@@ -86,10 +86,12 @@ int jkPlayer_bCinematicLight = 0;                          // Added (remaster): 
 flex_t jkPlayer_cineKey = 1.2;
 flex_t jkPlayer_cineFill = 0.35;
 flex_t jkPlayer_cineRim = 1.6;
+flex_t jkPlayer_cineUnder = 2.0;                          // Added (remaster): floor light on models (light probes)
 int jkPlayer_bLightmaps = 0;                                // Added (remaster): baked light maps (hd/jkgm/lightmaps)
 flex_t jkPlayer_lightmapFill = -1.0;                        // Added (remaster): <0 = the sidecar's own fill
 flex_t jkPlayer_lightmapGain = 1.0;
 flex_t jkPlayer_lightmapMax = 2.5;
+int jkPlayer_bLightProbes = 0;                              // Added (remaster): baked light probes on models (hd/jkgm/lightmaps/*.jklp)
 int jkPlayer_bVolumetricSky = 1;                            // Added (remaster): raymarched cloud sky (sithSky)
 flex_t jkPlayer_skyCoverage = -1.0;                         // Added (remaster): <0 = the level's preset
 flex_t jkPlayer_skySunAzimuth = -999.0;                     // Added (remaster): degrees, <-360 = preset
@@ -274,6 +276,10 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_lightmapFill",             -1.0,                       &jkPlayer_lightmapFill,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_lightmapGain",             1.0,                        &jkPlayer_lightmapGain,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_lightmapMax",              2.5,                        &jkPlayer_lightmapMax,              CVARFLAG_LOCAL);
+    // Baked light probes (tools/blender/probe_bake.py): models take their light, in colour and
+    // direction, from the bake around them. Needs r_cinematicLight (it replaces its key and fill).
+    sithCvar_RegisterFlex("r_cineUnder",                2.0,                        &jkPlayer_cineUnder,                CVARFLAG_LOCAL);
+    sithCvar_RegisterBool("r_lightProbes",              0,                          &jkPlayer_bLightProbes,             CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skyCoverage",              -1.0,                       &jkPlayer_skyCoverage,              CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skySunAzimuth",            -999.0,                     &jkPlayer_skySunAzimuth,            CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_skySunElevation",          -999.0,                     &jkPlayer_skySunElevation,          CVARFLAG_LOCAL);
@@ -340,6 +346,7 @@ static const jkPlayerPresetEntry jkPlayer_aRemasterPreset[] = {
     {"r_enableSSAO",         "1",   "0"},
     {"r_cinematicLight",     "1",   "0"},
     {"r_lightmaps",          "1",   "0"},   // only levels with a baked light map change
+    {"r_lightProbes",        "1",   "0"},   // only levels with baked probes change
 };
 
 int jkPlayer_ApplyRemasterPreset(int bOn)

@@ -29,6 +29,7 @@
 #include "Primitives/rdDebug.h"
 void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* pOrient); // Added (remaster)
 #include "Engine/sithGlowLights.h"
+#include "Engine/sithLightProbes.h" // Added (remaster)
 
 model3Loader_t rdModel3_RegisterLoader(model3Loader_t pfFunc)
 {
@@ -1923,9 +1924,127 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
 // the subject), and a rim lights edges turning away from the camera. Model faces then skip
 // the ambient floor (rdModel3_DrawFace), so the shadow side can actually go dark.
 int rdModel3_bCinematicMesh = 0;
+int rdModel3_bProbeRGB = 0;   // the current mesh's vertex light is in colour (rdModel3_aProbeR/G/B)
+static flex_t* rdModel3_aProbeRGB = NULL;
+static int rdModel3_probeRGBCap = 0;
+
+// Light probes (sithLightProbes): the cinematic rig with the baked light around the model.
+//   fill: the probe light from the side each vertex faces (colour and direction from the bake),
+//   key:  the probes' brightest direction, mixed with the screen-side key so there's always a lit
+//         and a shadow side, in the colour of the light from that direction,
+//   rim:  light from behind the model (as seen from the camera) on the silhouette, in its colour.
+//   under: light the floor throws up (r_cineUnder), wrapped onto sideways faces, strongest low.
+// Each vertex mixes the floor-level and chest-height probes by its own height, so legs pick up
+// the light of floor strips and pools. Dynamic lights (sabers, blasters, the headlight) still add
+// in on top, from the 1997 vertex light.
+static float rdModel3_Luma(const float* c) { return 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2]; }
+
+static void rdModel3_ProbeLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* pOrient, const sithLightProbeSample* pS, const rdVector3* pScreenKey)
+{
+    const rdMatrix34* cam = &rdCamera_g_camMatrix;
+    int nv = pMesh->numVertices;
+    if (nv * 3 > rdModel3_probeRGBCap)
+    {
+        flex_t* p = (flex_t*)realloc(rdModel3_aProbeRGB, sizeof(flex_t) * nv * 3);
+        if (!p) return;
+        rdModel3_aProbeRGB = p;
+        rdModel3_probeRGBCap = nv * 3;
+    }
+    flex_t gain = jkPlayer_lightmapGain, cap = jkPlayer_lightmapMax;
+    // Fill floor like the light maps': never darker than a share of the 1997 sector light.
+    flex_t amb = rdCamera_g_pCurCamera->ambientLight;
+    flex_t floorL = amb * (jkPlayer_lightmapFill >= 0 ? jkPlayer_lightmapFill : 0.35f) * 0.5f;
+
+    // Key direction: where the chest-height probes say most light comes from.
+    float lum[6];
+    for (int f = 0; f < 6; f++)
+        lum[f] = rdModel3_Luma(pS->high[f]);
+    rdVector3 grad = {lum[0] - lum[1], lum[2] - lum[3], lum[4] - lum[5]};
+    float avg = (lum[0] + lum[1] + lum[2] + lum[3] + lum[4] + lum[5]) / 6.0f;
+    float glen = rdVector_Len3(&grad);
+    rdVector3 keyW = *pScreenKey;
+    rdVector_Normalize3Acc(&keyW);
+    float dirW = avg > 1e-5f ? glen / (glen + avg) : 0.0f;   // 0 = even light, ->1 = one strong side
+    if (glen > 1e-6f)
+    {
+        rdVector_Scale3Acc(&grad, 1.0f / glen);
+        float wk = 0.35f + 0.5f * dirW;
+        keyW.x = keyW.x * (1 - wk) + grad.x * wk;
+        keyW.y = keyW.y * (1 - wk) + grad.y * wk;
+        keyW.z = keyW.z * (1 - wk) + grad.z * wk;
+        rdVector_Normalize3Acc(&keyW);
+    }
+    // Rim: light arriving from behind the model, i.e. travelling towards the camera.
+    rdVector3 back;
+    rdVector_Sub3(&back, &pOrient->scale, &cam->scale);
+    rdVector_Normalize3Acc(&back);
+
+    rdVector3 camL, keyLoc;
+    rdMatrix_TransformPoint34(&camL, &cam->scale, pMatInv);
+    rdMatrix_TransformVector34(&keyLoc, &keyW, pMatInv);
+    rdVector_Normalize3Acc(&keyLoc);
+    flex_t fill = jkPlayer_cineFill, keyS = jkPlayer_cineKey, rimS = jkPlayer_cineRim * 0.8f;
+    float zLow = pS->zLow, zSpan = pS->zHigh - pS->zLow;
+    for (int i = 0; i < nv; i++)
+    {
+        const rdVector3* n = &pMesh->vertexNormals[i];
+        rdVector3 nW, v, pW;
+        rdMatrix_TransformVector34(&nW, n, pOrient);
+        rdMatrix_TransformPoint34(&pW, &pMesh->aVertices[i], pOrient);
+        // This vertex's probe: floor layer at the feet, chest layer from chest height up.
+        float t = (pW.z - zLow) / zSpan;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        float cube[6][3];
+        for (int f = 0; f < 6; f++)
+            for (int c = 0; c < 3; c++)
+                cube[f][c] = pS->low[f][c] + (pS->high[f][c] - pS->low[f][c]) * t;
+        float pc[3], keyC[3], rimC[3];
+        sithLightProbes_Eval(cube, &nW, pc);
+        sithLightProbes_Eval(cube, &keyW, keyC);
+        sithLightProbes_Eval(cube, &back, rimC);
+        // Keep a rim even in flat light (a quarter of the key), tinted by what's behind.
+        float rimL = rdModel3_Luma(rimC), keyLu = rdModel3_Luma(keyC);
+        if (rimL < 0.25f * keyLu && rimL > 1e-5f)
+            for (int c = 0; c < 3; c++) rimC[c] *= 0.25f * keyLu / rimL;
+        else if (rimL <= 1e-5f)
+            for (int c = 0; c < 3; c++) rimC[c] = 0.25f * keyC[c];
+
+        rdVector_Sub3(&v, &camL, &pMesh->aVertices[i]);
+        rdVector_Normalize3Acc(&v);
+        flex_t key = rdVector_Dot3(n, &keyLoc);
+        if (key < 0) key = 0;
+        flex_t ndv = rdVector_Dot3(n, &v);
+        if (ndv < 0) ndv = 0;
+        if (ndv > 1) ndv = 1;
+        flex_t rim = (1 - ndv) * (1 - ndv) * (1 - ndv);
+        // Under light: what the floor throws up (floor strips, pools) wraps round onto sideways
+        // faces too, strongest at the shins and fading up the body.
+        float wrapU = (1.0f - nW.z) * 0.5f;
+        flex_t under = wrapU * wrapU * (1.0f - 0.6f * t) * jkPlayer_cineUnder;
+        flex_t dyn = pMesh->vertices_unk[i] - amb;   // dynamic lights on top of the sector light
+        if (dyn < 0) dyn = 0;
+        flex_t sum = 0;
+        for (int c = 0; c < 3; c++)
+        {
+            flex_t l = gain * (pc[c] * fill + keyC[c] * keyS * key * key + rimC[c] * rimS * rim + cube[5][c] * under) + dyn;
+            if (l < floorL) l = floorL;
+            if (l > cap) l = cap;
+            rdModel3_aProbeRGB[c * nv + i] = l;
+            sum += l;
+        }
+        pMesh->vertices_unk[i] = sum / 3.0f;
+    }
+    pMesh->paRedIntensities = rdModel3_aProbeRGB;
+    pMesh->paGreenIntensities = rdModel3_aProbeRGB + nv;
+    pMesh->paBlueIntensities = rdModel3_aProbeRGB + 2 * nv;
+    rdModel3_bProbeRGB = 1;
+}
+
 void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* pOrient)
 {
     rdModel3_bCinematicMesh = 0;
+    rdModel3_bProbeRGB = 0;
     if (!jkPlayer_bCinematicLight || !jkPlayer_bPerPixelLighting || !pMesh->vertexNormals || !rdCamera_g_pCurCamera)
         return;
     const rdMatrix34* cam = &rdCamera_g_camMatrix;
@@ -1946,6 +2065,14 @@ void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* pOr
             keyW.y = keyW.y * (1.0f - w) + toLight.y * w;
             keyW.z = keyW.z * (1.0f - w) + toLight.z * w;
         }
+    }
+    // Light probes: the baked light around the model, in colour and direction.
+    sithLightProbeSample probe;
+    if (pOrient && sithLightProbes_Sample(&pOrient->scale, sithLightProbes_pThingSector, &probe))
+    {
+        rdModel3_ProbeLight(pMesh, pMatInv, pOrient, &probe, &keyW);
+        rdModel3_bCinematicMesh = 1;
+        return;
     }
     rdMatrix_TransformVector34(&keyL, &keyW, pMatInv);
     rdVector_Normalize3Acc(&keyL);
@@ -2022,7 +2149,10 @@ int rdModel3_DrawFace(rdFace *pFace, int lightFlags)
     vertexSrc.vertexUVIdx = pFace->vertexUVIdx;
 
     // MOTS added: RGB
-    if ((rdGetVertexColorMode() == 0) || (procEntry->lightingMode == RD_LIGHTMODE_DIFFUSE)) {
+    // Added (remaster): light-probe meshes take the RGB path for smooth-shaded faces.
+    int probeRGB = rdModel3_bProbeRGB && rdGetVertexColorMode() == 0 && lightingMode == RD_LIGHTMODE_GOURAUD && pCurMesh->paRedIntensities;
+    procEntry->rgbLight = probeRGB;
+    if (((rdGetVertexColorMode() == 0) && !probeRGB) || (procEntry->lightingMode == RD_LIGHTMODE_DIFFUSE)) {
         if (meshFrustumCull != SPHERE_FULLY_INSIDE)
             rdPrimit3_ClipFace(rdCamera_g_pCurCamera->pClipFrustum, geometryMode, lightingMode, textureMode, &vertexSrc, &vertexDst, &pFace->texVertOffset);
         else

@@ -61,7 +61,8 @@ That breaks down into concrete engine work:
 - [x] Volumetric cloud sky with moon shafts on the storm levels (Maw, Sarris, the ascent); other skies to follow
 - [x] Cinematic key and rim light on characters and props (first pass)
 - [x] Light bake in game: baked light maps replace the 1997 corner light on six test levels (`r_lightmaps`, in the remaster preset) ([plan](../docs/stage2-lightbake-plan.md))
-- [ ] Light bake: tune and bake every level (sun for day levels, light probes for characters)
+- [x] Light probes: characters and props lit by the bake around them (colour, direction, floor light)
+- [ ] Light bake: tune and bake every level (sun for day levels)
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist

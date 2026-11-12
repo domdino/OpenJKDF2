@@ -16,7 +16,7 @@ if [ "$1" = "--remove" ]; then
         rm -f "$DATA/3do/$n.3do" "$DATA/3do/$n.skn"
         for m in "$d"mat/*.mat; do [ -f "$m" ] && rm -f "$DATA/3do/mat/$(basename "$m")"; done
     done
-    for w in hd/models_ja/weapons/*.3do hd/models_ja/saber/*.3do; do [ -f "$w" ] && rm -f "$DATA/3do/$(basename "$w")"; done
+    for w in hd/models_ja/weapons/*.3do hd/models_ja/saber/*.3do hd/models_ja/fp/*.3do hd/models_ja/fp/*.skn; do [ -f "$w" ] && rm -f "$DATA/3do/$(basename "$w")"; done
     echo "removed converted models from $DATA/3do"
     exit 0
 fi
@@ -25,7 +25,7 @@ mkdir -p "$DATA/3do/mat"
 # HD textures for the characters live in the HD pack folder; make sure the data folder sees it.
 [ -e "$DATA/jkgm" ] || ln -s "$PWD/hd/jkgm" "$DATA/jkgm"
 names="$*"
-[ -n "$names" ] || names=$(ls hd/models_ja | grep -v '^weapons$')
+[ -n "$names" ] || names=$(ls hd/models_ja | grep -v '^weapons$\|^fp$\|^saber$')
 count=0
 for n in $names; do
     d="hd/models_ja/$n"
@@ -45,5 +45,10 @@ esac
 # The lightsaber (tools/make_hilt.py): third-person, first-person and pickup models.
 case " $names " in *" saber "*|*" ky "*)
     if [ -f hd/models_ja/saber/sabg.3do ]; then cp hd/models_ja/saber/*.3do "$DATA/3do/"; cp hd/models_ja/saber/mat/*.mat "$DATA/3do/mat/"; echo "installed the new lightsaber"; fi;;
+esac
+# First-person arms (after the saber: its sabv has both the new hilt and the new arms)
+# First-person arms (tools/make_fp_hands.py): Kyle's gloves and sleeves on every view model.
+case " $names " in *" fp "*|*" ky "*)
+    if [ -f hd/models_ja/fp/bryv.3do ]; then cp hd/models_ja/fp/*.3do hd/models_ja/fp/*.skn "$DATA/3do/"; cp hd/models_ja/fp/mat/*.mat "$DATA/3do/mat/"; echo "installed first-person arms"; fi;;
 esac
 echo "installed $count model(s) into $DATA/3do"

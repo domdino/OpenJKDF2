@@ -8,7 +8,7 @@ remasters; the importer (tools/texturegod_import.py) only took colour, ORM and n
 each pack's run folder (from the pack description), converts the heights to 8-bit (the engine's
 PNG loader), stretched to the full range per texture, and adds `displacement_map` and
 `displacement_factor` (depth in texture widths) to every entry. Terrain textures (cliffs, rock,
-ground, stone, sand) get --terrain (default 0.05), everything else --other (0.015): panels and
+grass, dirt, sand: organic only, see TERRAIN) get --terrain (default 0.05), everything else --other (0.015): panels and
 pipes keep a hint of depth without swimming. The shader does the parallax (default_f.glsl).
 """
 import glob
@@ -23,7 +23,9 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 TG_OUT = "/Users/therock/Documents/Work/TEXTURE GOD/out"
-TERRAIN = re.compile(r"cliff|clif|rock|rck|grs|grass|stn|ston|wst|dtw|wex|waq|dirt|sand|mud|grnd|car3|cave", re.I)
+# Organic only, checked against the textures: "wex" is metal wall panels, "wst"/"wstn"/"waq"/"dtw"
+# are Barons Hed buildings, "stn"/"ston" palace masonry, "car3" machinery, "03wrck" stone with pipes.
+TERRAIN = re.compile(r"cliff|clif|rock|grs|grass|dirt|sand|mud|grnd|cave|wexrck", re.I)
 
 
 def main():

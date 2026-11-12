@@ -32,7 +32,9 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-TERRAIN = re.compile(r"cliff|clif|rock|rck|grs|grass|stn|ston|wst|dtw|wex|waq|dirt|sand|mud|grnd|car3|cave", re.I)
+# Organic only, checked against the textures: "wex" is metal wall panels, "wst"/"wstn"/"waq"/"dtw"
+# are Barons Hed buildings, "stn"/"ston" palace masonry, "car3" machinery, "03wrck" stone with pipes.
+TERRAIN = re.compile(r"cliff|clif|rock|grs|grass|dirt|sand|mud|grnd|cave|wexrck", re.I)
 
 
 def arg(name, default, cast=float):

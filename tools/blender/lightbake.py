@@ -419,14 +419,23 @@ def main():
             # fitted to (least squares over every surface corner).
             set_glow(obj, 0.0, cards)
             bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT"}, margin=2)
-            pts, pix = corner_samples(d)
+            # Match the 1997 brightness at surface centres (mean of the corner values there):
+            # corners sit in creases, which a real bake darkens and JED's linear light didn't.
+            pix, target = [], []
+            for srf in d["surfaces"]:
+                if srf["sky"] or not srf["intensities"] or "lm" not in srf:
+                    continue
+                lm = srf["lm"]
+                pix.append((int(lm["x"] + lm["w"] / 2), int(lm["y"] + lm["h"] / 2)))
+                target.append(min(float(np.mean(srf["intensities"])), 2.0))
             baked = sample(img, pix)
-            log("calibration bake mean %.4f" % float(baked.mean()))
-            model = np.zeros(len(pts))
-            for L in fitted["lights"]:
-                dist = np.linalg.norm(pts - np.array(L["pos"]), axis=1)
-                model += L["intensity"] * np.clip(1.0 - dist / L["range"], 0.0, None)
-            scale = float((model * baked).sum() / max((baked * baked).sum(), 1e-9))
+            model = np.array(target)
+            log("calibration bake mean %.4f, 1997 mean %.4f" % (float(baked.mean()), float(model.mean())))
+            lit = model > 0.05
+            # Match the average, not the median: a real bake concentrates light in pools with a
+            # dark majority between them, and matching medians would brighten that majority flat.
+            scale = float(model[lit].mean() / max(baked[lit].mean(), 1e-6)) if lit.sum() > 10 else 1.0
+            scale = min(max(scale, 0.05), 20.0)
             corr = float(np.corrcoef(model, baked * scale)[0, 1])
             log("calibration: light power x%.3f, correlation with the 1997 light %.2f" % (scale, corr))
             for o, e in lamps:

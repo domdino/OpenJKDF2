@@ -566,7 +566,7 @@ Every scene should be lit like a cinematic Star Wars shot: key light from the si
 
 **More sky presets** (matched by sky material): `sulon_overcast` (03sky09k: heavy grey storm cumulus), `day_broken` (04sky01, 10sky2, 14sky), `day_clear` (06sky01/02, 09skyB), `sunset` (12sky3, the hangar's ceiling: towering pink cumulus lit low from the side). Bright skies needed half the sun and ~0.7 exposure: the storm-tuned glow and bloom blow them to white otherwise. Checked from cameras placed under each level's biggest sky surface: fuel station, hangar ceiling and Sulon look right (docs/screenshots/stage2-sky-presets.jpg).
 - Some levels paint sky textures on ordinary faces as well as sky faces (a block of the escape house's view). Faces using the active preset's sky material are now drawn as sky too (sithSky_IsSkyMaterial, cached per material). The Baron's Hed camera turned out to be underwater looking at the water surface, not a sky.
-- Cargo and tower cameras landed inside walls, so those two are unchecked.
+- Cargo and tower cameras landed inside walls, so those two are unchecked. (Later checked from the centre of the sector under each level's biggest sky ceiling: both look right, docs/screenshots/stage2-sky-cargo-tower.jpg. The tower needs a short capture delay or Kyle falls before the shot.)
 
 **Light bake, tuning round** (Blender previews only, no engine changes):
 - Fixed a bake script bug: a second bake into the same image never reached the saved file after the calibration pixels were read; the final pass now bakes into a fresh image with a forced scene update. (Several earlier "identical" comparisons were also zsh not splitting `$args`.)

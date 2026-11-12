@@ -125,7 +125,7 @@ Tuning the character light against a paint-over reference (floor light strength,
 
 ![Back-light rim](../docs/screenshots/stage2-light-probes-rim.jpg)
 
-The first light maps in game on six test levels (top 1997, bottom baked):
+Light maps on six levels: the 1997 game (left) vs the remaster (right):
 
 ![Light maps in game](../docs/screenshots/stage2-lightmaps-in-game.jpg)
 

@@ -14,6 +14,12 @@ For every first-person weapon model (bryv.3do, strv.3do, sabv.3do, ...):
     animations instead of tearing.
 Output: hd/models_ja/fp/<name>.3do/.skn + textures.json (then tools/make_character_textures.py
 hd/models_ja/fp name,name,... and scripts/install_cast.sh fp).
+
+--jke [name ...]: build on the JK Enhanced community weapons instead of the 1997 ones (10-35x
+the detail, same JK format, same arm and hand nodes first so JK's own weapon animations drive
+them; extract with tools/jke_extract.py). Their hands (HAND_TEX.MAT, split over hand, thumb and
+finger nodes) are fitted to and replaced the same way; the hand frame comes from the 1997
+model, carried into JKE's hand joint. Output: hd/models_ja/fp_jke/ (+ JKE's gun textures in mat/).
 """
 import json
 import os
@@ -30,6 +36,13 @@ SRC = os.path.join(ROOT, "hd", "models_src", "3do")
 OUT = os.path.join(ROOT, "hd", "models_ja", "fp")
 MODELS = ["fistv", "bryv", "strv", "rptv", "conv", "bowv", "rldv", "seqv", "detv", "sabv"]
 OLD = ("hd", "hnd-wrt", "kyrarm")
+JKE = "--jke" in sys.argv
+JKE_SRC = os.path.join(ROOT, "hd", "models_src", "jke", "3do")
+JKE_MODELS = ["bryv", "strv", "rptv", "conv", "bowv", "rldv"]
+if JKE:
+    OLD = OLD + ("hand_tex",)
+    _named = [a for a in sys.argv[sys.argv.index("--jke") + 1:] if not a.startswith("--")]
+    MODELS = _named or JKE_MODELS
 HAND_SCALE = 0.0357
 # Bare hands from the free "PSX First Person Arms" pack (tools/blender/psx_fp_hands.py writes
 # psx_hands.json); --ja-hands keeps Academy Kyle's gloved hands instead.
@@ -162,6 +175,26 @@ def graft_hand(a, h, texture):
     return out, s
 
 
+def subtree(m, i):
+    out, todo = [], [i]
+    while todo:
+        k = todo.pop()
+        out.append(k)
+        todo += [j for j, nd in enumerate(m.nodes) if nd.parent == k]
+    return out
+
+
+def hand_surface(m, rest, ih, prefix, n=1500, seed=1):
+    """Points over every face with this material on the hand node and the nodes under it."""
+    pts = [surface_points(m, m.geosets[0][m.nodes[k].mesh], rest[k], prefix, n, seed)
+           for k in subtree(m, ih) if m.nodes[k].mesh >= 0]
+    pts = [p for p in pts if len(p)]
+    if not pts:
+        return np.zeros((0, 3))
+    allp = np.concatenate(pts)
+    return allp[np.random.default_rng(seed).choice(len(allp), size=min(n, len(allp)), replace=False)]
+
+
 def node_named(m, name):
     for i, nd in enumerate(m.nodes):
         if nd.name.lower() == name.lower():
@@ -179,16 +212,23 @@ def main():
             arms[side], s = graft_hand(arms[side], hands[side], PSX_TEXTURE)
             print("grafted the PSX %s hand (scale %.3f)" % (side, s))
     textures = {}
+    out_dir = os.path.join(ROOT, "hd", "models_ja", "fp_jke") if JKE else OUT
+    os.makedirs(out_dir, exist_ok=True)
     for name in MODELS:
         path = os.path.join(SRC, name + ".3do")
         newer = os.path.join(ROOT, "hd", "models_ja", "saber", name + ".3do")  # sabv with the new hilt
-        if os.path.exists(newer):
+        if os.path.exists(newer) and not JKE:
             path = newer
+        m97 = None
+        if JKE:
+            m97 = jk3do.load(path)
+            path = os.path.join(JKE_SRC, name + ".3do")
         if not os.path.exists(path):
             print(name, "missing")
             continue
         m = jk3do.load(path)
         rest = jk3do.rest_matrices(m)
+        rest97 = jk3do.rest_matrices(m97) if m97 else None
         geo = m.geosets[0]
         skin = jk3do.Mesh()
         skin.name = "fparms"
@@ -199,14 +239,24 @@ def main():
             if ih is None or m.nodes[ih].mesh < 0:
                 continue
             me = geo[m.nodes[ih].mesh]
+            # The hand frame comes from the 1997 hand (its fingertip and thumb textures); with
+            # --jke it is carried from the 1997 hand joint into JKE's.
+            src_m, src_rest, src_ih, carry = m, rest, ih, np.eye(4)
+            if m97 is not None:
+                src_ih = node_named(m97, "k_%shand" % side)
+                if src_ih is None or m97.nodes[src_ih].mesh < 0:
+                    continue
+                src_m, src_rest = m97, rest97
+                carry = rest[ih] @ np.linalg.inv(rest97[src_ih])
+            sme = src_m.geosets[0][src_m.nodes[src_ih].mesh]
             def pts(prefix):
-                vs = {v for f in me.faces if m.materials[f["mat"]].lower().startswith(prefix) for v, _ in f["idx"]}
-                return [(rest[ih] @ [*me.verts[v][:3], 1.0])[:3] for v in vs]
+                vs = {v for f in sme.faces if src_m.materials[f["mat"]].lower().startswith(prefix) for v, _ in f["idx"]}
+                return [(carry @ src_rest[src_ih] @ [*sme.verts[v][:3], 1.0])[:3] for v in vs]
             tips, thumb = pts("hdftip"), pts("hdsdthum")
             if not tips or not thumb:
                 continue
-            nd = m.nodes[ih]
-            w_jk = (rest[ih] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1.0])[:3]
+            nd = src_m.nodes[src_ih]
+            w_jk = (carry @ src_rest[src_ih] @ [-nd.pivot[0], -nd.pivot[1], -nd.pivot[2], 1.0])[:3]
             t_jk, th_jk = np.mean(tips, axis=0), np.mean(thumb, axis=0)
             a = arms[side]
             w_ja, t_ja, th_ja = (np.array(a[k]) for k in ("wrist", "tips", "thumb"))
@@ -227,7 +277,7 @@ def main():
             hand_pts = np.array(a["fit"]) if "fit" in a else np.array(
                 [np.array(p) for p, r in zip(a["verts"], a["roles"]) if max(r, key=r.get) == "hand"])
             src = (hand_pts - w_ja) * s
-            dst = surface_points(m, me, rest[ih], "hd")
+            dst = hand_surface(m, rest, ih, "hand_tex") if JKE else surface_points(m, me, rest[ih], "hd")
             t0 = w_jk.copy()
             Rm, tv, rms = icp(src, dst, Rm, t0)
             remap = {}
@@ -285,9 +335,25 @@ def main():
         if m.nodes[0].mesh >= 0:
             raise RuntimeError("%s: root node already has a mesh" % name)
         m.nodes[0].mesh = idx
-        jk3do.save(m, os.path.join(OUT, name + ".3do"), "%s with Jedi Academy Kyle's arms (tools/make_fp_hands.py)" % name)
-        jk3do.write_skin(os.path.join(OUT, name + ".skn"), [(0, idx, weights)])
+        jk3do.save(m, os.path.join(out_dir, name + ".3do"), "%s with Jedi Academy Kyle's arms (tools/make_fp_hands.py%s)" % (
+            name, " --jke, on the JK Enhanced weapon" if JKE else ""))
+        jk3do.write_skin(os.path.join(out_dir, name + ".skn"), [(0, idx, weights)])
         print("%-6s %d vertices, %d faces: %s" % (name, len(skin.verts), len(skin.faces), ", ".join(fitted)))
+    if JKE:
+        # the guns' own textures, plus the arm textures already made for the 1997 set
+        import shutil
+        os.makedirs(os.path.join(out_dir, "mat"), exist_ok=True)
+        for name in MODELS:
+            fp = os.path.join(out_dir, name + ".3do")
+            if not os.path.exists(fp):
+                continue
+            for mat in jk3do.load(fp).materials:
+                src = os.path.join(ROOT, "hd", "models_src", "jke", "mat", mat.lower())
+                if os.path.exists(src):
+                    shutil.copy(src, os.path.join(out_dir, "mat", mat.lower()))
+        for f in os.listdir(os.path.join(OUT, "mat")):
+            shutil.copy(os.path.join(OUT, "mat", f), os.path.join(out_dir, "mat", f))
+        return
     json.dump({"textures": textures, "uv_fraction": True}, open(os.path.join(OUT, "textures.json"), "w"), indent=1)
 
 

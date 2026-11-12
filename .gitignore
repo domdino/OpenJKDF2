@@ -157,3 +157,4 @@ CLAUDE.md
 *.JKL
 /build_darwin64.log
 /logs/
+__pycache__/

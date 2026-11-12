@@ -2,9 +2,9 @@
 """Lay out labelled original-vs-remaster comparison images for sharing.
 
     python3 tools/make_side_by_side.py OUT.png TITLE LEFT.png RIGHT.png [LEFT2.png RIGHT2.png ...]
-        [--labels "Original (1997)" "Remaster"]
+        [--labels "Original (1997)" "Remaster"] [--rows]
 
-Pairs go in rows; each row is left | right with a small label over each, and the title
+Pairs go across the width (--rows: one pair per row, stacked); each pair is left | right with a small label over each, and the title
 across the top. Dark background, 16:9-ish friendly widths.
 """
 import sys
@@ -29,15 +29,20 @@ def main():
         i = args.index("--labels")
         labels = args[i + 1:i + 3]
         del args[i:i + 3]
+    rows = "--rows" in args
+    if rows:
+        args.remove("--rows")
     out, title, imgs = args[0], args[1], args[2:]
     pairs = [(Image.open(imgs[i]).convert("RGB"), Image.open(imgs[i + 1]).convert("RGB")) for i in range(0, len(imgs), 2)]
-    cell_h = 900
+    cell_h = 900 if not rows else min(900, max(Image.open(f).height for f in imgs))
     pairs = [tuple(im.resize((int(im.width * cell_h / im.height), cell_h), Image.LANCZOS) for im in p) for p in pairs]
     cols = max(sum(im.width for im in p) for p in pairs) // 1 if len(pairs) == 1 else None
     gap, pad, label_h, title_h = 16, 40, 56, 96
     if len(pairs) == 1 or True:
         # pairs side by side across the width
         row_w = sum(p[0].width + p[1].width + gap for p in pairs) + gap * (len(pairs) - 1)
+    if rows:
+        return stacked(out, title, labels, pairs, cell_h, gap, pad, label_h, title_h)
     W = row_w + pad * 2
     H = title_h + label_h + cell_h + pad
     canvas = Image.new("RGB", (W, H), (14, 15, 18))
@@ -50,6 +55,25 @@ def main():
             canvas.paste(im, (x, title_h + label_h))
             x += im.width + gap
         x += gap
+    canvas.save(out, quality=90, optimize=True) if out.lower().endswith(".jpg") else canvas.save(out)
+    print("wrote", out, canvas.size)
+
+
+def stacked(out, title, labels, pairs, cell_h, gap, pad, label_h, title_h):
+    row_w = max(p[0].width + p[1].width + gap for p in pairs)
+    W = row_w + pad * 2
+    H = title_h + len(pairs) * (label_h + cell_h + gap) + pad
+    canvas = Image.new("RGB", (W, H), (14, 15, 18))
+    d = ImageDraw.Draw(canvas)
+    d.text((pad, 28), title, fill=(235, 235, 235), font=font(44))
+    y = title_h
+    for left, right in pairs:
+        x = pad
+        for im, lab, col in ((left, labels[0], (150, 150, 150)), (right, labels[1], (255, 196, 92))):
+            d.text((x + 6, y + 8), lab, fill=col, font=font(32))
+            canvas.paste(im, (x, y + label_h))
+            x += im.width + gap
+        y += label_h + cell_h + gap
     canvas.save(out, quality=90, optimize=True) if out.lower().endswith(".jpg") else canvas.save(out)
     print("wrote", out, canvas.size)
 

@@ -1,7 +1,9 @@
 """Export Jedi Academy Kyle's forearms and hands, fingers curled into a grip, for JK's
 first-person weapon models (tools/make_fp_hands.py).
 
-    Blender -b --python tools/blender/ja_fp_arms.py -- GLM BASEPATH SKIN OUT.json [--render PNG]
+    Blender -b --python tools/blender/ja_fp_arms.py -- GLM BASEPATH SKIN OUT.json [--render PNG] [--subdiv N]
+
+--subdiv N rounds the sleeves (arm and cuff surfaces) with N levels of subdivision.
 
 For each side (r, l): vertices (JA world space, after posing), normals, faces with per-corner
 UVs (0-1, v down) and image, a role per vertex weight (shoulder / forearm / hand), and the key
@@ -37,6 +39,7 @@ def main():
     argv = sys.argv[sys.argv.index("--") + 1:]
     glm, base, skin, out = argv[:4]
     render = argv[argv.index("--render") + 1] if "--render" in argv else None
+    subdiv = int(argv[argv.index("--subdiv") + 1]) if "--subdiv" in argv else 0
     addon_utils.enable("jediacademy", default_set=True)
     for o in list(bpy.data.objects):
         bpy.data.objects.remove(o, do_unlink=True)
@@ -53,6 +56,23 @@ def main():
     bpy.ops.import_scene.glm(filepath=glm, skin=skin, basepath=base, guessTextures=False)
     arm = [o for o in bpy.data.objects if o.type == "ARMATURE"][0]
     A = arm.matrix_world
+    if subdiv:
+        # Round the low-poly sleeves: Catmull-Clark on the rest mesh, applied under the armature
+        # so weights and UVs are interpolated onto the new vertices.
+        root0 = bpy.data.objects.get("model_root_0")
+        for o in root0.children_recursive:
+            base_name = o.name.lower().rsplit("_", 1)[0]
+            if o.type != "MESH" or base_name not in [s + "_arm" for s in "rl"] + [s + "_hand_wrist" for s in "rl"]:
+                continue
+            bpy.context.view_layer.objects.active = o
+            mod = o.modifiers.new("round", "SUBSURF")
+            mod.levels = mod.render_levels = subdiv
+            mod.uv_smooth = "PRESERVE_BOUNDARIES"
+            bpy.ops.object.modifier_move_to_index(modifier=mod.name, index=0)
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+            for p in o.data.polygons:
+                p.use_smooth = True
+            log("rounded", o.name, len(o.data.vertices), "verts")
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode="EDIT")
     for eb in arm.data.edit_bones:

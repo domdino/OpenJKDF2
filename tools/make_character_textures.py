@@ -87,13 +87,19 @@ def main():
         if src and os.path.exists(src):
             png = mat_name.replace(".mat", ".png")
             img.save(os.path.join(pack_dir, png))
+            old = [e for e in meta["materials"] if e.get("name") == "%s.%s" % (pack, mat_name)]
             meta["materials"] = [e for e in meta["materials"] if e.get("name") != "%s.%s" % (pack, mat_name)]
-            meta["materials"].append({
+            entry = {
                 "name": "%s.%s" % (pack, mat_name),
                 "albedo_map": png,
                 "replaces": [{"name": n, "cel": 0} for n in
                              ("3do\\mat\\" + mat_name, "3do/mat/" + mat_name, "mat\\" + mat_name, "mat/" + mat_name)],
-            })
+            }
+            # keep maps added later (tools/texturegod_characters.py): ORM, normal, a repainted albedo
+            for k, v in (old[0].items() if old else ()):
+                if k in ("orm_map", "normal_map") or (k == "albedo_map" and "_tg_" in v):
+                    entry[k] = v
+            meta["materials"].append(entry)
         print("  %-28s %s" % (mat_name, os.path.basename(src) if src else "(grey)"))
 
     if info.get("uv_fraction"):

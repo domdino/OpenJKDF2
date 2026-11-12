@@ -31,6 +31,19 @@ OUT = os.path.join(ROOT, "hd", "models_ja", "fp")
 MODELS = ["fistv", "bryv", "strv", "rptv", "conv", "bowv", "rldv", "seqv", "detv", "sabv"]
 OLD = ("hd", "hnd-wrt", "kyrarm")
 HAND_SCALE = 0.0357
+# Bare hands from the free "PSX First Person Arms" pack (tools/blender/psx_fp_hands.py writes
+# psx_hands.json); --ja-hands keeps Academy Kyle's gloved hands instead.
+PSX_SOURCE = os.path.expanduser("~/Downloads/psx-first-person-arms-free-game-assets/arms_01.png")
+PSX_TEXTURE = os.path.join(OUT, "psx_skin.png")
+SKIN_GAIN = (0.8, 0.77, 0.78)  # the pack's skin is lighter and pinker than Kyle's face texture
+SLIM = 0.45                     # forearm narrows by this much towards the sleeve end
+PSX_SIZE = 0.9                  # a touch smaller than Academy Kyle's gloved fist
+
+
+def make_skin():
+    from PIL import Image
+    im = np.asarray(Image.open(PSX_SOURCE).convert("RGB")).astype(float)
+    Image.fromarray(np.clip(im * np.array(SKIN_GAIN), 0, 255).astype(np.uint8)).save(PSX_TEXTURE)
 
 
 def frame(w, t, th):
@@ -82,6 +95,73 @@ def icp(src, dst, R, t, iters=40):
     return R, t, float(np.sqrt(err.mean()))
 
 
+def rotation_to(a, b):
+    a = a / np.linalg.norm(a)
+    b = b / np.linalg.norm(b)
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    if np.linalg.norm(v) < 1e-9:
+        return np.eye(3)
+    vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + vx + vx @ vx * (1 / (1 + c))
+
+
+def graft_hand(a, h, texture):
+    """Kyle's arm (a) with his gloved hand faces swapped for another hand (h, same JSON layout):
+    h's wrist/fingertips/thumb frame is mapped onto Kyle's (rotation, uniform scale, translation)."""
+    def fr(d):
+        w, t, th = (np.array(d[k]) for k in ("wrist", "tips", "thumb"))
+        return w, frame(w, t, th), np.linalg.norm(t - w)
+    wa, Fa, la = fr(a)
+    wh, Fh, lh = fr(h)
+    R = Fa @ Fh.T
+    s = la / lh * PSX_SIZE
+    keep_f = [i for i, img in enumerate(a["images"]) if not (img and "basic_hand" in img)]
+    used = sorted({v for i in keep_f for v in a["faces"][i]})
+    remap = {v: k for k, v in enumerate(used)}
+    out = {k: a[k] for k in ("wrist", "tips", "thumb", "elbow")}
+    out["verts"] = [a["verts"][v] for v in used]
+    out["normals"] = [a["normals"][v] for v in used]
+    out["roles"] = [a["roles"][v] for v in used]
+    out["faces"] = [[remap[v] for v in a["faces"][i]] for i in keep_f]
+    out["uvs"] = [a["uvs"][i] for i in keep_f]
+    out["images"] = [a["images"][i] for i in keep_f]
+    # Kyle's glove was a gauntlet reaching up into the sleeve: keep as much of the new forearm
+    # (plus a margin) so the bare wrist fills that gap instead of leaving a hole.
+    up = np.array(a["elbow"]) - wa
+    up /= np.linalg.norm(up)
+    glove = [np.array(a["verts"][v]) for i, img in enumerate(a["images"]) if img and "basic_hand" in img for v in a["faces"][i]]
+    reach = max(float((p - wa) @ up) for p in glove) * 1.1
+    hv = [wa + R @ ((np.array(p) - wh) * s) for p in h["verts"]]
+    hn = [R @ np.array(n) for n in h["normals"]]
+    # The rigs bend at the wrist differently: turn the new forearm onto Kyle's (blended by the
+    # forearm weight, like a wrist joint), then slim it to sit inside the sleeve.
+    fa = R @ (np.array(h["elbow"]) - wh)
+    Q = rotation_to(fa, up)
+    for i, r in enumerate(h["roles"]):
+        wf = 1.0 - r.get("hand", 0.0)
+        if wf > 0:
+            q = Q @ (hv[i] - wa)
+            hv[i] = hv[i] + wf * (wa + q - hv[i])
+            n = hn[i] + wf * (Q @ hn[i] - hn[i])
+            hn[i] = n / (np.linalg.norm(n) or 1)
+    for i, p in enumerate(hv):
+        d = float((p - wa) @ up)
+        if d > 0.0:
+            k = 1.0 - SLIM * min(d / reach, 1.0)
+            hv[i] = wa + up * d + (p - wa - up * d) * k
+    hf = [i for i, f in enumerate(h["faces"]) if min(float((hv[v] - wa) @ up) for v in f) <= reach]
+    v0 = len(out["verts"])
+    out["verts"] += [list(p) for p in hv]
+    out["normals"] += [list(n) for n in hn]
+    out["roles"] += [{k: w for k, w in r.items() if k != "shoulder"} or {"forearm": 1.0} for r in h["roles"]]
+    out["faces"] += [[v + v0 for v in h["faces"][i]] for i in hf]
+    out["uvs"] += [h["uvs"][i] for i in hf]
+    out["images"] += [texture] * len(hf)
+    out["fit"] = a["fit"] if "fit" in a else [p for p, r in zip(a["verts"], a["roles"]) if max(r, key=r.get) == "hand"]
+    return out, s
+
+
 def node_named(m, name):
     for i, nd in enumerate(m.nodes):
         if nd.name.lower() == name.lower():
@@ -91,6 +171,13 @@ def node_named(m, name):
 
 def main():
     arms = json.load(open(os.path.join(OUT, "arms.json")))
+    psx = os.path.join(OUT, "psx_hands.json")
+    if os.path.exists(psx) and "--ja-hands" not in sys.argv:
+        hands = json.load(open(psx))
+        make_skin()
+        for side in "rl":
+            arms[side], s = graft_hand(arms[side], hands[side], PSX_TEXTURE)
+            print("grafted the PSX %s hand (scale %.3f)" % (side, s))
     textures = {}
     for name in MODELS:
         path = os.path.join(SRC, name + ".3do")
@@ -137,7 +224,8 @@ def main():
                 keep_v.append(dom != "shoulder" or show_shoulder)
             # Rough fit from wrist/fingertips/thumb, then refine onto the old hand's surface (ICP),
             # keeping the size fixed: the new hand takes the old one's place and orientation.
-            hand_pts = np.array([np.array(p) for p, r in zip(a["verts"], a["roles"]) if max(r, key=r.get) == "hand"])
+            hand_pts = np.array(a["fit"]) if "fit" in a else np.array(
+                [np.array(p) for p, r in zip(a["verts"], a["roles"]) if max(r, key=r.get) == "hand"])
             src = (hand_pts - w_ja) * s
             dst = surface_points(m, me, rest[ih], "hd")
             t0 = w_jk.copy()

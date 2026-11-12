@@ -1614,7 +1614,8 @@ static void Window_DevCaptureTick(void)
     }
 
     // Give the PNG writer thread time to finish, then quit without touching player settings.
-    if (state == 3 && now - tMark > 3000000000ull) {
+    // (bigger windows take longer to compress: ~1 s per 4 megapixels on top of 3 s)
+    if (state == 3 && now - tMark > 3000000000ull + (uint64_t)Window_xSize * Window_ySize * 250ull) {
         fflush(stdout);
         exit(0);
     }
@@ -1752,6 +1753,14 @@ void Window_RecreateSDL2Window()
 
 #if !defined(ARCH_WASM) && !defined(TARGET_ANDROID) && !defined(TARGET_IOS)
     if (Window_IsDevCapture()) {
+        // OPENJKDF2_CAPTURE_SIZE=1728x1117: window size in points (x2 pixels with HiDPI), to
+        // measure at a real display's resolution without showing anything on screen.
+        const char* pSize = getenv("OPENJKDF2_CAPTURE_SIZE");
+        int cw = 0, ch = 0;
+        if (pSize && sscanf(pSize, "%dx%d", &cw, &ch) == 2 && cw >= 320 && ch >= 240) {
+            SDL_SetWindowSize(displayWindow, cw, ch);
+            stdPlatform_Printf("CAPTURE: window size %dx%d points\n", cw, ch);
+        }
         SDL_SetWindowPosition(displayWindow, -30000, -30000); // Added (remaster): out of sight
         int px = 0, py = 0;
         SDL_GetWindowPosition(displayWindow, &px, &py);

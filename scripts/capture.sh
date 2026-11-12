@@ -21,7 +21,8 @@
 #      CAPTURE_CAMERA (1 = third-person camera, to see Kyle),
 #      CAPTURE_KEY (e.g. kyrun0.key: play that animation on the player as timing starts),
 #      CAPTURE_CMDS (cheats/console commands, ';'-separated, e.g. red5), CAPTURE_WEAPON (10 = saber),
-#      CAPTURE_SEQ=1 (save every timed frame and make NAME.mp4; use r_fpslimit=60 for real-time speed)
+#      CAPTURE_SEQ=1 (save every timed frame and make NAME.mp4; use r_fpslimit=60 for real-time speed),
+#      CAPTURE_SIZE=WxH (window size in points, e.g. 1728x1117 = MacBook Retina; still off-screen)
 # Output: logs/captures/NAME.png and NAME.log; the stats line is printed.
 set -e
 
@@ -83,6 +84,7 @@ OPENJKDF2_CAPTURE_KEY="${CAPTURE_KEY:-}" \
 OPENJKDF2_CAPTURE_CMDS="${CAPTURE_CMDS:-}" \
 OPENJKDF2_CAPTURE_WEAPON="${CAPTURE_WEAPON:-}" \
 OPENJKDF2_CAPTURE_SEQ="${CAPTURE_SEQ:-}" \
+OPENJKDF2_CAPTURE_SIZE="${CAPTURE_SIZE:-}" \
     script -q /dev/null "$BIN" -autostart -sp -episode JK1 -map "${CAPTURE_MAP:-01narshadda.jkl}" \
     < /dev/null > "$OUT_DIR/$NAME.log" 2>&1 || true
 

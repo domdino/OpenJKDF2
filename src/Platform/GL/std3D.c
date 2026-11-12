@@ -20,6 +20,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <math.h> // Added (remaster): sqrt for the auto render scale
 #include <stdlib.h>
 #include "Platform/GL/shader_utils.h"
 #include "Platform/GL/jkgm.h"
@@ -411,6 +412,8 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
 
     if (jkPlayer_enableSSAO)
     {
+        // (Tried half resolution for speed: this SSAO's depth/noise sampling bands visibly on large
+        // flat surfaces then, so it stays at full resolution. See docs/DECISIONS.md.)
         std3D_generateIntermediateFbo(width, height, &pFb->ssaoBlur1, 0);
         std3D_generateIntermediateFbo(pFb->ssaoBlur1.w/2, pFb->ssaoBlur1.h/2, &pFb->ssaoBlur2, 0);
         //std3D_generateIntermediateFbo(pFb->ssaoBlur2.w/2, pFb->ssaoBlur2.h/2, &pFb->ssaoBlur3, 0);
@@ -421,9 +424,9 @@ void std3D_generateFramebuffer(int32_t width, int32_t height, std3DFramebuffer* 
     if (jkPlayer_enableBloom)
     {
         pFb->enable_extra |= 1;
-        // Added (remaster): first bloom blur at half resolution (was full: 49 samples per
-        // pixel every frame). The later levels are quarter-steps of this, as before.
-        std3D_generateIntermediateFbo(width / 2, height / 2, &pFb->blur1, 1);
+        // Added (remaster): first bloom blur at quarter resolution (was full, then half: 48
+        // samples per pixel every frame). The later levels are quarter-steps of this, as before.
+        std3D_generateIntermediateFbo(width / 4, height / 4, &pFb->blur1, 1);
         //std3D_generateIntermediateFbo(width, height, &pFb->blurBlend, 1);
         std3D_generateIntermediateFbo(pFb->blur1.w/4, pFb->blur1.h/4, &pFb->blur2, 1);
         std3D_generateIntermediateFbo(pFb->blur2.w/4, pFb->blur2.h/4, &pFb->blur3, 1);
@@ -983,6 +986,15 @@ int std3D_StartScene()
     std3D_swapFramebuffers();
     
     double supersample_level = jkPlayer_ssaaMultiple; // Can also be set lower
+    // Added (remaster): on very large displays (e.g. a 7680x3240 ultrawide, 25 megapixels) render
+    // the 3D scene at a scale that keeps it near a pixel budget, then upscale; the 1997 textures
+    // are so magnified there that it costs no visible sharpness. MacBook-size screens are under
+    // the budget and stay native. r_autoRenderScale 0 = always use r_ssaaMultiple as is.
+    if (jkPlayer_bAutoRenderScale && Window_xSize > 0 && Window_ySize > 0) {
+        double px = (double)Window_xSize * Window_ySize * supersample_level * supersample_level;
+        const double budget = 14.0e6;
+        if (px > budget) supersample_level *= sqrt(budget / px);
+    }
     int32_t tex_w = (int32_t)((double)Window_xSize * supersample_level);
     int32_t tex_h = (int32_t)((double)Window_ySize * supersample_level);
 
@@ -3002,7 +3014,7 @@ void std3D_DrawSceneFbo()
     {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         
-        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur1, std3D_pFb->tex1, 0, 0, 16.0, 3.0, 1.0 * rad_scale, 1); // Added (remaster): half-res target, so half the radius keeps the same look
+        std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur1, std3D_pFb->tex1, 0, 0, 16.0, 3.0, 0.5 * rad_scale, 1); // Added (remaster): quarter-res target, so a quarter of the full-res radius keeps the same look
         std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur2, std3D_pFb->blur1.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
         std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur3, std3D_pFb->blur2.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);
         std3D_DrawSimpleTex(&std3D_blurStage, &std3D_pFb->blur4, std3D_pFb->blur3.tex, 0, 0, 16.0, 3.0, 2.0 * rad_scale, 1);

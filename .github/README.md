@@ -66,7 +66,7 @@ That breaks down into concrete engine work:
 - [x] Rebuild the community Neural Upscale pack from its installer (555 textures matched so far)
 - [x] Rebuild from all three Remastered installers, palette-correct (no wrong colours in other levels)
 - [x] Engine fix: HD texture hashes use the level's real palette (coverage went from almost none to dozens per view)
-- [ ] Performance: HD textures plus the full remaster look are too slow in some rooms (optimise passes)
+- [x] Performance: full remaster + HD runs at 156 fps on the MacBook's native screen; a 7680x3240 ultrawide gets automatic render scaling (52 -> 77 fps). The earlier slowdowns were Topaz and Texture God sharing the GPU
 - [x] Material maps in the engine: roughness, metalness, AO and normal maps per texture (rock defaults to matte)
 - [x] Importer for Texture God output (my own AI upscaling and PBR pipeline)
 - [ ] First full Texture God batch in game
@@ -91,16 +91,22 @@ That breaks down into concrete engine work:
 - [x] New lightsaber: Kyle's hilt from Jedi Outcast in third person, first person and the pickups
 - [x] Third-person weapons no longer carry the 1997 hand
 - [x] Glowing plasma blades: white-hot core, coloured sheath and halo, animated, lighting the room (`r_saberGlow`)
-- [ ] Lightsaber swing trails
+- [x] Lightsaber swing trails (only on real swings)
+- [x] First-person hands: Kyle's gloves and sleeves on every weapon view
 
 ### Stage 5 checklist
 
 - [x] Extract all 25 cutscenes (640x300, 15 fps, 33 minutes) to ProRes for upscaling and grading (`scripts/extract_cutscenes.sh`)
 - [x] Engine plays HD replacements (H.264, HEVC or ProRes, any resolution or frame rate) in place of the originals, with the originals as fallback and subtitles kept
-- [ ] Upscale (2x, 1280x600, original 15 fps: interpolation looked janky) and grade all 25
+- [x] Upscale all 25 (Topaz, 3x to 1920x900, original 15 fps; interpolation looked janky)
+- [ ] Grade in After Effects
 - [ ] Playtest every cutscene in game
 
 ## Latest
+
+All 25 cutscenes now play upscaled in game (Topaz, 1920x900), and first-person view shows Kyle's own gloves and sleeves:
+
+![Cutscenes, original vs upscale](../docs/screenshots/stage5-cutscenes-hd.jpg)
 
 The lightsaber blade is now a glowing plasma beam instead of a flat textured strip: a white-hot core, a deep coloured sheath and a soft halo that lights the room, with plasma that ripples and hums. Enemy sabers keep their own colours. ([video](../docs/screenshots/stage4-saber-blade.mp4))
 

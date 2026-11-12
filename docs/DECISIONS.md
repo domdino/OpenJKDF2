@@ -466,3 +466,32 @@ Dom: "a realistic light emitting glow and plasma animation would make a big diff
 **Not yet**: a swing trail (motion smear between the previous and current blade), and a check on enemy sabers in a Dark Jedi fight.
 
 **Fix (Dom: "not lining up to the saber at the bottom")**: the capsule's ends were extended flat in the screen plane, so when the blade runs towards or away from the camera (always, in first person) the quad's centre line missed the emitter and the core started above the hilt. The ends now extend along the blade's real 3D direction (depth part capped for blades pointing at the camera), so the core starts exactly at the emitter; the glow also fades quickly below the emitter instead of washing over the hilt.
+
+**Swing trails** (`r_saberTrails 1`, default): each saber (polyline + the joint matrix it's drawn with) keeps up to 12 world-space blade positions from the last 75 ms; every frame a ribbon is drawn through them with the same blade shader (u = 10 + age marks a trail fragment; v = base to tip), fading with age and towards the hilt, whiter when fresh and coloured as it fades. Each segment's intensity scales with R / sweep (the same light spread over a wider sweep is dimmer), which stopped fast swings near the camera from washing the screen out. Time-based, so the trail is the same length at any frame rate. Ribbon segments are drawn with both windings (culling keeps one). Before/after at half speed: docs/screenshots/stage4-saber-swing.mp4.
+
+## 2026-11-11 - First-person hands
+
+No good free (CC0) first-person arms exist; the decent ones are cheap paid packs of modern tactical arms. Used Jedi Academy Kyle's own forearms and hands instead (brown gloves, jacket sleeves), so first person matches third person.
+
+- JK's first-person weapon models (fistv, bryv, strv, rptv, conv, bowv, rldv, detv, sabv; seqv has no hand) each have a rigid 1997 hand sculpted in a fist-like grip (HD*.MAT), a cuff (HND-WRT) and sometimes an upper arm (KYRARM), on nodes K_?hand / K_?forearm / K_?shouldr.
+- `tools/blender/ja_fp_arms.py`: curls Kyle's fingers into a closed fist (finger joints rotated about the palm axis, thumb across) and exports both forearms + hands with per-vertex roles (hand / forearm / upper arm).
+- `tools/make_fp_hands.py`: per model and hand, a rough fit from wrist, fingertip and thumb, then ICP onto the old hand's surface (fixed hand size 0.0357, fit error ~6% of hand size); the arm becomes one skinned mesh (.skn) so the wrist bends with the weapon animations; the 1997 hand/cuff/arm faces are removed, the weapon kept. sabv is built on the new-hilt saber model. Installed with Kyle (scripts/install_cast.sh).
+- In game the fists now sit where the 1997 ones did (docs/screenshots/stage4-fp-hands.jpg); with the guns and saber the hand is mostly below the screen edge, as in 1997. Not yet judged: punch/fire animations in motion, and whether the fist shape reads well up close (it's a generic grip, not sculpted per weapon).
+
+**Topaz batch in (2026-11-11).** Dom's Topaz render (Proteus, 3x to 1920x900, original 15 fps) for all 25 cutscenes: `tools/import_cutscenes.py` matched every one to the original's length (+0.00 s) and linked them into hd/video. In game they play in place of the originals (checked 03-04A, 12A, 38A: docs/screenshots/stage5-cutscenes-hd.jpg). Not yet: a full playthrough watch with sound for sync.
+
+## 2026-11-11 - Performance pass (GPU idle at last)
+
+Checked first: no Topaz/Blender/ffmpeg/Python jobs, GPU utilisation 0% between runs, memory 94% free. The 33-40 fps measured earlier in Boc's room was Topaz and Texture God competing for the GPU.
+
+Full remaster + HD textures (`remaster=1`, filtering on), standard views, uncapped:
+- 1280x960: 127-135 fps (original look 215-220).
+- MacBook native 3456x2234 (new `CAPTURE_SIZE=1728x1117`, still off-screen): 156 fps. Fine.
+- External ultrawide 7680x3240 (25 megapixels): 52 fps, 28 ms worst frames. Effect costs there (removing one at a time): bloom 5.6 ms, SSAO 4.5 ms, per-pixel lighting 4.2 ms; reflections, haze, shafts and grade within noise (already reduced resolution).
+
+Changes:
+- Bloom's first blur at quarter resolution (was half), radius scaled to match: same look (hangar differs by ~1/255), small gain (52 -> 55 fps ultrawide). Most of bloom's cost is the extra buffers and mix, not the blur.
+- Tried SSAO at half resolution: big gain but this SSAO's depth/noise sampling bands visibly on large flat surfaces (the hangar shuttle), even with a wider blur; reverted to full resolution.
+- **`r_autoRenderScale` (default on)**: above ~14 megapixels the 3D scene renders scaled to that budget and is upscaled (r_ssaaMultiple already supported scales below 1). Ultrawide 52 -> 77 fps; MacBook unaffected (156). At 1:1 on the ultrawide, 75% vs native is indistinguishable: the 1997 textures are magnified far beyond pixel level there. Manual: r_ssaaMultiple 0.6 gives 96 fps.
+- Capture fix: screenshots wait longer for big windows (25-megapixel PNGs were cut off).
+- Saber trails only on real swings (sweep > 1.2 glow radii per sample): Boc's idle sway left a pale slab beside his blade.

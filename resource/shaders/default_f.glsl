@@ -505,6 +505,32 @@ vec4 bilinear_paletted_light(float index)
 }
 #endif
 
+// Added (remaster): baked light maps (std3D_LightmapUpdate). Each level face knows its world
+// surface; its record says how world positions map into the light map atlas.
+flat in float f_lmSurf;
+uniform int u_lmOn;
+uniform sampler2D u_lmAtlas;
+uniform sampler2D u_lmData;   // per surface: 3 texels (atlas u plane, atlas v plane, clamp rect)
+uniform vec4 u_lmParams;      // fill (floor: share of the 1997 light), gain, max, unused
+uniform vec3 u_lmCamPos;      // camera position in world space
+
+bool lm_sample(vec3 P, out vec3 light)
+{
+    light = vec3(0.0);
+    int s = int(f_lmSurf + 0.5) - 1;
+    if (u_lmOn == 0 || s < 0) return false;
+    ivec2 base = ivec2((s % 1024) * 3, s / 1024);
+    if (base.y >= textureSize(u_lmData, 0).y) return false;
+    vec4 a = texelFetch(u_lmData, base, 0);
+    vec4 b = texelFetch(u_lmData, base + ivec2(1, 0), 0);
+    vec4 r = texelFetch(u_lmData, base + ivec2(2, 0), 0);
+    if (r.z <= 0.0) return false;
+    vec3 W = u_lmCamPos + vec3(dot(P, u_skyWX), dot(P, u_skyWY), dot(P, u_skyWZ));
+    vec2 uv = clamp(vec2(dot(W, a.xyz) + a.w, dot(W, b.xyz) + b.w), r.xy, max(r.zw, r.xy));
+    light = min(texture(u_lmAtlas, uv).rgb * u_lmParams.y, vec3(u_lmParams.z));
+    return true;
+}
+
 void main(void)
 {
     if (saberBlade != 0) { saberBladeMain(); return; } // Added (remaster)
@@ -553,6 +579,12 @@ void main(void)
     vec4 sampledEmiss = texture(texEmiss, adj_texcoords);
     vec4 sampled_color = vec4(1.0, 1.0, 1.0, 1.0);
     vec4 vertex_color = f_color;
+    // Added (remaster): baked light replaces the 1997 corner light (plus a share of it as fill).
+    vec3 lm_light;
+    bool lm_has = u_ppl != 0 && f_invz > 0.0 && lm_sample(ppl_P, lm_light);
+    // The 1997 light times fill is a floor, not an addition: it keeps places the bake missed
+    // from going black without flattening the lit areas.
+    if (lm_has) vertex_color.rgb = max(lm_light, vertex_color.rgb * u_lmParams.x);
     float index = sampled.r;
     vec4 palval = texture(worldPalette, vec2(index, 0.5));
     vec4 color_add = vec4(0.0, 0.0, 0.0, 1.0);
@@ -640,7 +672,7 @@ void main(void)
         // Metals have little diffuse; ambient occlusion darkens crevices.
         ppl_diff *= (1.0 - 0.8 * mat_metal);
         vec3 base = vertex_color.rgb;
-        float litMax = 1.0;
+        float litMax = lm_has ? max(u_lmParams.z, 1.0) : 1.0; // baked hot spots may go past 1 (bloom)
         vec3 lit = min(base + ppl_diff, vec3(litMax)) * mix(1.0, mat_ao, 0.8);
         main_color.rgb = sampled_color.rgb * lit * albedoFactor_copy.rgb;
 

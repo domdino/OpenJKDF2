@@ -701,6 +701,7 @@ typedef struct rdProcEntry
     int32_t y_max_related;
     uint32_t vertexColorMode;
     uint32_t bladeColor; // Added (remaster): procedural saber blade, ARGB (A = blade length / glow radius / 32)
+    int32_t lightmapSurface; // Added (remaster): world surface index for baked light maps, -1 = not a level face
 } rdProcEntry;
 
 typedef struct v11_struct

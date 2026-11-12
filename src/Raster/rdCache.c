@@ -121,6 +121,7 @@ rdProcEntry *rdCache_GetProcEntry()
 
     // Added: Try and prevent weird issues.
     out_procEntry->material = NULL;
+    out_procEntry->lightmapSurface = -1; // Added (remaster): set by sithRender for level faces
 
     return out_procEntry;
 }
@@ -819,6 +820,8 @@ int rdCache_SendFaceListToHardware()
 
 #ifndef TARGET_TWL
                 rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
+                // Added (remaster): world surface + 1 for baked light maps (0 = none).
+                rdCache_aHWVertices[rdCache_totalVerts].ny = (float)(active_6c->lightmapSurface + 1);
 #endif
                 if ( lighting_capability == 0 )
                 {
@@ -1178,6 +1181,7 @@ LABEL_232:
 #else
             rdCache_aHWVertices[rdCache_totalVerts].nx = v88 / 32.0;
             rdCache_aHWVertices[rdCache_totalVerts].nz = 0.0;
+            rdCache_aHWVertices[rdCache_totalVerts].ny = (float)(active_6c->lightmapSurface + 1); // Added (remaster): light maps
 #endif
 
 #ifdef TARGET_TWL

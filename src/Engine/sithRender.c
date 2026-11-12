@@ -2278,6 +2278,7 @@ void sithRender_RenderSectors()
                 procEntry->material = v58;
                 v59 = procEntry->geometryMode;
                 procEntry->light_flags = 0;
+                procEntry->lightmapSurface = (int32_t)(v65 - sithWorld_g_pCurrentWorld->surfaces); // Added (remaster): baked light maps
                 // Added (remaster): volumetric sky replaces this level's sky texture (sithSky).
                 if (UNLIKELY(sithSky_GetActive()) && ((flags & (SITH_SURFACE_HORIZON_SKY | SITH_SURFACE_CEILING_SKY)) || sithSky_IsSkyMaterial(v58)))
                     procEntry->light_flags |= RD_PROC_FLAG_SKY;
@@ -2515,6 +2516,7 @@ void sithRender_RenderSectors()
                     v20->material = v65->surfaceInfo.face.material;
                     v38 = v20->geometryMode;
                     v20->light_flags = 0;
+                    v20->lightmapSurface = (int32_t)(v65 - sithWorld_g_pCurrentWorld->surfaces); // Added (remaster): baked light maps
                     if (UNLIKELY(sithSky_GetActive()) && sithSky_IsSkyMaterial(v20->material)) // Added (remaster): sky texture on an ordinary face
                         v20->light_flags |= RD_PROC_FLAG_SKY;
                     v20->type = v65->surfaceInfo.face.type;

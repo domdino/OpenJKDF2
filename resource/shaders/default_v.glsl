@@ -3,12 +3,14 @@ in vec4 v_color;
 in float v_light;
 in vec2 v_uv;
 in float v_invz; // Added (remaster): 1/(32*view depth), for per-pixel lighting
+in float v_lmSurf; // Added (remaster): light map world surface + 1 (0 = none)
 uniform mat4 mvp;
 out vec4 f_color;
 out float f_light;
 out vec2 f_uv;
 out vec3 f_coord;
 noperspective out float f_invz; // 1/depth is linear in screen space, so no perspective correction
+flat out float f_lmSurf;
 
 void main(void)
 {
@@ -21,4 +23,5 @@ void main(void)
     f_coord = coord3d;
     f_light = v_light;
     f_invz = v_invz;
+    f_lmSurf = v_lmSurf;
 }

@@ -1,6 +1,6 @@
 # Light bake plan (Stage 2, lighting phase 4)
 
-Status: proposal, waiting for Dom's yes. Touches about 6 engine files and adds a new per-level sidecar file format, so per CLAUDE.md it needs approval first.
+Status: approved by Dom (2026-11-12). Steps 1 and 2 done: light maps run in game on six levels (see docs/DECISIONS.md). Next: step 3, tuning.
 
 ## The problem
 

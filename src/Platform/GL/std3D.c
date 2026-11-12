@@ -1,4 +1,5 @@
 #include "Platform/std3D.h"
+#include <ctype.h> // Added (remaster): light map file names
 
 #include "Raster/rdCache.h"
 #include "Raster/rdZRaster.h"
@@ -164,6 +165,9 @@ static GLint uniform_sky = -1, uniform_skyPano = -1, uniform_skyWX = -1, uniform
 static GLint uniform_skySunDir = -1, uniform_skySunCol = -1, uniform_skyZenith = -1, uniform_skyHorizon = -1;
 static GLint uniform_skyBelow = -1, uniform_skyFlash = -1;
 static GLint uniform_model = -1, uniform_cine = -1; // Added (remaster): cinematic key/rim light on models
+// Added (remaster): baked light maps (see std3D_LightmapUpdate).
+GLint attribute_v_lmSurf = -1;
+static GLint uniform_lmOn = -1, uniform_lmAtlas = -1, uniform_lmData = -1, uniform_lmParams = -1, uniform_lmCamPos = -1;
 static float std3D_skyWorldAxes[9]; // world X, Y, Z axes in camera space (last world draw)
 static int std3D_frameNumGlow = 0;
 static float std3D_frameGlowPos[SITHGLOWLIGHTS_MAX_GATHER * 4], std3D_frameGlowCol[SITHGLOWLIGHTS_MAX_GATHER * 4];
@@ -718,6 +722,12 @@ int init_resources()
     uniform_sky = std3D_tryFindUniform(programDefault, "u_sky"); // Added (remaster): volumetric sky
     uniform_model = std3D_tryFindUniform(programDefault, "u_model");
     uniform_cine = std3D_tryFindUniform(programDefault, "u_cine");
+    attribute_v_lmSurf = std3D_tryFindAttribute(programDefault, "v_lmSurf"); // Added (remaster): light maps
+    uniform_lmOn = std3D_tryFindUniform(programDefault, "u_lmOn");
+    uniform_lmAtlas = std3D_tryFindUniform(programDefault, "u_lmAtlas");
+    uniform_lmData = std3D_tryFindUniform(programDefault, "u_lmData");
+    uniform_lmParams = std3D_tryFindUniform(programDefault, "u_lmParams");
+    uniform_lmCamPos = std3D_tryFindUniform(programDefault, "u_lmCamPos");
     uniform_skyPano = std3D_tryFindUniform(programDefault, "u_skyPano");
     uniform_skyWX = std3D_tryFindUniform(programDefault, "u_skyWX");
     uniform_skyWY = std3D_tryFindUniform(programDefault, "u_skyWY");
@@ -1129,6 +1139,111 @@ static void std3D_SkyUpdatePanorama(void)
     glActiveTexture(GL_TEXTURE0);
 }
 
+// Added (remaster): baked light maps. tools/blender/lightmap_sidecar.py writes
+// jkgm/lightmaps/<level>.jklm next to the HD packs: an RGB half-float atlas of baked light and,
+// per world surface, how world positions map into it. Level faces carry their surface number to
+// the shader (rdCache puts it in the vertex's spare ny), the shader rebuilds each pixel's world
+// position and uses the baked light in place of the 1997 corner light. Loaded when a level
+// starts; a missing file or one baked for a different version of the level means the original
+// light.
+#define STD3D_LM_PER_ROW 1024
+static GLuint std3D_lmAtlas = 0, std3D_lmData = 0;
+static int std3D_lmReady = 0, std3D_lmWorldSurfaces = -1;
+static SithWorld* std3D_lmWorld = NULL;
+static char std3D_lmWorldName[32];
+static float std3D_lmFill = 0.0f, std3D_lmGain = 1.0f;
+
+static void std3D_LightmapFree(void)
+{
+    if (std3D_lmAtlas) glDeleteTextures(1, &std3D_lmAtlas);
+    if (std3D_lmData) glDeleteTextures(1, &std3D_lmData);
+    std3D_lmAtlas = std3D_lmData = 0;
+    std3D_lmReady = 0;
+}
+
+static void std3D_LightmapLoad(SithWorld* w)
+{
+    char name[64], path[128];
+    int i;
+    for (i = 0; i < 63 && w->map_jkl_fname[i] && w->map_jkl_fname[i] != '.'; i++)
+        name[i] = (char)tolower((unsigned char)w->map_jkl_fname[i]);
+    name[i] = 0;
+    snprintf(path, sizeof(path), "jkgm/lightmaps/%s.jklm", name);
+    FILE* f = fopen(path, "rb");
+    if (!f) return;
+
+    char magic[4];
+    uint32_t hdr[5];
+    float fg[2];
+    if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "JKLM", 4) || fread(hdr, 4, 5, f) != 5 || fread(fg, 4, 2, f) != 2
+        || hdr[0] != 1) {
+        stdPlatform_Printf("lightmap: %s is not a version 1 light map, ignored\n", path);
+        fclose(f);
+        return;
+    }
+    uint32_t numVerts = hdr[1], n = hdr[2], W = hdr[3], H = hdr[4];
+    if ((int)numVerts != w->numVertices || n == 0 || (int)n > w->numSurfaces || W == 0 || H == 0 || W > 16384 || H > 16384) {
+        stdPlatform_Printf("lightmap: %s was baked for a different version of the level (%u verts, %u surfaces; level has %d, %d), ignored\n",
+                           path, numVerts, n, w->numVertices, w->numSurfaces);
+        fclose(f);
+        return;
+    }
+    // Surface table: 3 RGBA32F texels per surface, STD3D_LM_PER_ROW surfaces per row.
+    uint32_t rows = (n + STD3D_LM_PER_ROW - 1) / STD3D_LM_PER_ROW;
+    float* rec = (float*)calloc((size_t)rows * STD3D_LM_PER_ROW * 12, sizeof(float));
+    uint16_t* px = (uint16_t*)malloc((size_t)W * H * 3 * sizeof(uint16_t));
+    int ok = rec && px && fread(rec, sizeof(float) * 12, n, f) == n && fread(px, (size_t)W * 6, H, f) == H;
+    fclose(f);
+    if (!ok) {
+        stdPlatform_Printf("lightmap: %s is truncated, ignored\n", path);
+        free(rec);
+        free(px);
+        return;
+    }
+
+    glGenTextures(1, &std3D_lmData);
+    glBindTexture(GL_TEXTURE_2D, std3D_lmData);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, STD3D_LM_PER_ROW * 3, rows, 0, GL_RGBA, GL_FLOAT, rec);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glGenTextures(1, &std3D_lmAtlas);
+    glBindTexture(GL_TEXTURE_2D, std3D_lmAtlas);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, W, H, 0, GL_RGB, GL_HALF_FLOAT, px);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    free(rec);
+    free(px);
+
+    std3D_lmFill = fg[0];
+    std3D_lmGain = fg[1];
+    std3D_lmReady = 1;
+    stdPlatform_Printf("lightmap: loaded %s (%ux%u, %u surfaces, fill %.2f)\n", path, W, H, n, std3D_lmFill);
+}
+
+// The current level's light map, loading it when the level changes. 1 if there is one.
+static int std3D_LightmapUpdate(void)
+{
+    SithWorld* w = sithWorld_g_pCurrentWorld;
+    if (!jkPlayer_bLightmaps || !w) return 0;
+    // Key on the name and surface count too: a new level can reuse the old one's memory.
+    if (w != std3D_lmWorld || w->numSurfaces != std3D_lmWorldSurfaces
+        || strncmp(w->map_jkl_fname, std3D_lmWorldName, sizeof(std3D_lmWorldName)))
+    {
+        std3D_lmWorld = w;
+        std3D_lmWorldSurfaces = w->numSurfaces;
+        strncpy(std3D_lmWorldName, w->map_jkl_fname, sizeof(std3D_lmWorldName));
+        std3D_LightmapFree();
+        std3D_LightmapLoad(w);
+    }
+    return std3D_lmReady;
+}
+
 int std3D_StartScene()
 {
     if (Main_bHeadless) return 1;
@@ -1290,6 +1405,11 @@ int std3D_StartScene()
         glVertexAttribPointer(attribute_v_invz, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, nx));
         glEnableVertexAttribArray(attribute_v_invz);
     }
+    // Added (remaster): light map surface (+1, 0 = none) rides in the vertex's spare ny.
+    if (attribute_v_lmSurf >= 0) {
+        glVertexAttribPointer(attribute_v_lmSurf, 1, GL_FLOAT, GL_FALSE, sizeof(D3DVERTEX), (GLvoid*)offsetof(D3DVERTEX, ny));
+        glEnableVertexAttribArray(attribute_v_lmSurf);
+    }
     
     return 1;
 }
@@ -1305,6 +1425,7 @@ int std3D_EndScene()
 
     glDisableVertexAttribArray(attribute_v_uv);
     if (attribute_v_invz >= 0) glDisableVertexAttribArray(attribute_v_invz); // Added (remaster)
+    if (attribute_v_lmSurf >= 0) glDisableVertexAttribArray(attribute_v_lmSurf); // Added (remaster)
     glDisableVertexAttribArray(attribute_v_color);
     glDisableVertexAttribArray(attribute_coord3d);
 
@@ -3465,6 +3586,7 @@ void std3D_DrawRenderList()
         int bPpl = jkPlayer_bPerPixelLighting && rdCamera_g_pCurCamera && rdCamera_g_pCurCamera->pCanvas
                    && !jkGuiBuildMulti_bRendering && attribute_v_invz >= 0;
         glUniform1i(uniform_ppl, bPpl);
+        glUniform1i(uniform_lmOn, 0); // Added (remaster): set below when there's a light map
         glUniform1i(uniform_ssrWrite, bPpl && std3D_GBufferActive()); // Added (remaster)
         if (bPpl)
         {
@@ -3538,6 +3660,27 @@ void std3D_DrawRenderList()
                     rdMatrix_TransformVector34(&o, &ax[k], &rdCamera_g_pCurCamera->orient);
                     std3D_skyWorldAxes[k*3+0] = o.x; std3D_skyWorldAxes[k*3+1] = o.y; std3D_skyWorldAxes[k*3+2] = o.z;
                 }
+                // World axes also turn camera-space positions into world positions (light maps).
+                glUniform3fv(uniform_skyWX, 1, &std3D_skyWorldAxes[0]);
+                glUniform3fv(uniform_skyWY, 1, &std3D_skyWorldAxes[3]);
+                glUniform3fv(uniform_skyWZ, 1, &std3D_skyWorldAxes[6]);
+
+                // Added (remaster): baked light maps.
+                int bLm = std3D_LightmapUpdate();
+                glUniform1i(uniform_lmOn, bLm);
+                if (bLm) {
+                    float fill = (jkPlayer_lightmapFill >= 0.0) ? (float)jkPlayer_lightmapFill : std3D_lmFill;
+                    glUniform4f(uniform_lmParams, fill, std3D_lmGain * (float)jkPlayer_lightmapGain, (float)jkPlayer_lightmapMax, 0.0f);
+                    glUniform3f(uniform_lmCamPos, rdCamera_g_camMatrix.scale.x, rdCamera_g_camMatrix.scale.y, rdCamera_g_camMatrix.scale.z);
+                    glUniform1i(uniform_lmAtlas, 8);
+                    glUniform1i(uniform_lmData, 9);
+                    glActiveTexture(GL_TEXTURE0 + 8);
+                    glBindTexture(GL_TEXTURE_2D, std3D_lmAtlas);
+                    glActiveTexture(GL_TEXTURE0 + 9);
+                    glBindTexture(GL_TEXTURE_2D, std3D_lmData);
+                    glActiveTexture(GL_TEXTURE0);
+                }
+
                 const sithSkyPreset* sp = sithSky_GetActive();
                 if (sp && std3D_skyPanoReady) {
                     float sun[3], fdir[3];

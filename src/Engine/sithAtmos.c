@@ -90,6 +90,51 @@ int sithAtmos_GetParticles(float t, const rdVector3* pCam, sithAtmosParticle* pO
     return n;
 }
 
+int sithAtmos_GetDust(float t, const rdVector3* pCam, const float* fwd, float amount, sithAtmosParticle* pOut, int max)
+{
+    // Cells of 0.04 units (40 cm) out to 0.5 units (5 m) ahead; about 1.5 % hold a mote (by
+    // hash), roughly 60 in view. If there are more, the nearest are kept.
+    const float cell = 0.04f, reach = 0.5f;
+    static float cand[4000][5];   // x, y, z, distance squared, hash
+    int nc = 0;
+    int c0[3] = {(int)floorf((pCam->x - reach) / cell), (int)floorf((pCam->y - reach) / cell), (int)floorf((pCam->z - reach) / cell)};
+    int span = (int)(2.0f * reach / cell) + 1;
+    for (int ix = 0; ix < span; ix++)
+    for (int iy = 0; iy < span; iy++)
+    for (int iz = 0; iz < span && nc < 4000; iz++)
+    {
+        float cx = (float)(c0[0] + ix), cy = (float)(c0[1] + iy), cz = (float)(c0[2] + iz);
+        float h = sithAtmos_Hash(cx * 1.31f + cy * 7.77f + cz * 3.19f);
+        if (h > 0.03f * amount) continue;
+        float h1 = sithAtmos_Hash(h * 1313.1f), h2 = sithAtmos_Hash(h * 2929.7f), h3 = sithAtmos_Hash(h * 5151.3f);
+        // Slow drift and a gentle bob, different per mote.
+        float px = (cx + h1) * cell + 0.006f * sinf(t * 0.21f + h * 4000.0f);
+        float py = (cy + h2) * cell + 0.006f * sinf(t * 0.17f + h * 2300.0f);
+        float pz = (cz + h3) * cell + 0.004f * sinf(t * 0.29f + h * 6100.0f);
+        float dx = px - pCam->x, dy = py - pCam->y, dz = pz - pCam->z;
+        float d2 = dx * dx + dy * dy + dz * dz;
+        float along = dx * fwd[0] + dy * fwd[1] + dz * fwd[2];
+        if (along < 0.03f || along * along < 0.45f * d2 || d2 > reach * reach) continue;   // in the view cone
+        cand[nc][0] = px; cand[nc][1] = py; cand[nc][2] = pz; cand[nc][3] = d2; cand[nc][4] = h;
+        nc++;
+    }
+    int n = 0;
+    for (; n < max && n < nc; n++) {
+        int best = n;
+        for (int k = n + 1; k < nc; k++) if (cand[k][3] < cand[best][3]) best = k;
+        if (best != n) for (int q = 0; q < 5; q++) { float tmp = cand[n][q]; cand[n][q] = cand[best][q]; cand[best][q] = tmp; }
+        sithAtmosParticle* p = &pOut[n];
+        p->pos[0] = cand[n][0]; p->pos[1] = cand[n][1]; p->pos[2] = cand[n][2];
+        p->radius = 0.0016f;   // 1.6 cm, bigger than real dust so it reads
+        p->age = 0.5f;
+        p->seed = cand[n][4] * 66.0f - floorf(cand[n][4] * 66.0f);
+        p->kind = 2.0f;
+        p->tint[0] = p->tint[1] = p->tint[2] = 1.0f;
+        p->opacity = 0.9f;
+    }
+    return n;
+}
+
 static void sithAtmos_LoadEmitters(const char* path)
 {
     for (int i = 0; i < EMIT_MAX; i++) {

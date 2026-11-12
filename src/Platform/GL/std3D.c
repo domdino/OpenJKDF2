@@ -3358,14 +3358,20 @@ void std3D_DrawSceneFbo()
 
             // Added (remaster): smoke and steam puffs from the level's emitters, lit by the same
             // light volume (still bound on units 6 and 7).
-            if (jkPlayer_bSmoke && std3D_smokeStage.program)
+            if ((jkPlayer_bSmoke || jkPlayer_dust > 0.0f) && std3D_smokeStage.program)
             {
                 static sithAtmosParticle parts[SITHATMOS_MAX_PARTICLES];
                 float tsec = (float)(SDL_GetTicks() % 100000000) / 1000.0f;
-                int np = sithAtmos_GetParticles(tsec, &cam, parts, SITHATMOS_MAX_PARTICLES);
-                float scr[64 * 4], wld[64 * 4], look[64 * 4], misc[64 * 4], depth[64];
-                int order[64], ns = 0;
+                int np = jkPlayer_bSmoke ? sithAtmos_GetParticles(tsec, &cam, parts, 64) : 0;
                 const float* A = std3D_skyWorldAxes;
+                if (jkPlayer_dust > 0.0f)
+                {
+                    float fwd[3] = {A[1], A[4], A[7]};   // camera forward (+y) in world
+                    np += sithAtmos_GetDust(tsec, &cam, fwd, jkPlayer_dust, parts + np, SITHATMOS_MAX_PARTICLES - np);
+                }
+                float scr[SITHATMOS_MAX_PARTICLES * 4], wld[SITHATMOS_MAX_PARTICLES * 4], look[SITHATMOS_MAX_PARTICLES * 4];
+                float misc[SITHATMOS_MAX_PARTICLES * 4], depth[SITHATMOS_MAX_PARTICLES];
+                int order[SITHATMOS_MAX_PARTICLES], ns = 0;
                 for (int i = 0; i < np; i++)
                 {
                     float vx = parts[i].pos[0] - std3D_fogCamPos[0], vy = parts[i].pos[1] - std3D_fogCamPos[1], vz = parts[i].pos[2] - std3D_fogCamPos[2];
@@ -3454,7 +3460,7 @@ void std3D_DrawSceneFbo()
                 if (score <= aScore[slot]) continue;
             } else n++;
             aScore[slot] = score;
-            aPos[slot*4+0] = u; aPos[slot*4+1] = v; aPos[slot*4+2] = std3D_frameGlowCol[i*4+3]; aPos[slot*4+3] = 0.0f;
+            aPos[slot*4+0] = u; aPos[slot*4+1] = v; aPos[slot*4+2] = std3D_frameGlowCol[i*4+3]; aPos[slot*4+3] = y; // Added (remaster): depth, for occlusion
             aCol[slot*4+0] = std3D_frameGlowCol[i*4+0]; aCol[slot*4+1] = std3D_frameGlowCol[i*4+1];
             aCol[slot*4+2] = std3D_frameGlowCol[i*4+2]; aCol[slot*4+3] = 1.0f;
         }
@@ -3475,7 +3481,7 @@ void std3D_DrawSceneFbo()
                 float u = cx / std3D_ssrScreen[0], v = 1.0f - cy / std3D_ssrScreen[1];
                 if (u > -0.6f && u < 1.6f && v > -0.6f && v < 1.6f)
                 {
-                    aPos[n*4+0] = u; aPos[n*4+1] = v; aPos[n*4+2] = 1.0f; aPos[n*4+3] = 1.0f;
+                    aPos[n*4+0] = u; aPos[n*4+1] = v; aPos[n*4+2] = 1.0f; aPos[n*4+3] = -1.0f; // sky source
                     aCol[n*4+0] = sp->sunColor[0]; aCol[n*4+1] = sp->sunColor[1]; aCol[n*4+2] = sp->sunColor[2]; aCol[n*4+3] = 1.0f;
                     n++;
                 }

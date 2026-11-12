@@ -42,19 +42,24 @@ int sithAtmos_GetVolumes(const rdVector3* pCamPos, float* pCenter, float* pSize,
 
 // Smoke and steam emitters (same JSON, "emitters" array). Particles are a function of time only
 // (no simulation state): each emitter keeps rate x life particles cycling from birth to death.
-#define SITHATMOS_MAX_PARTICLES 64
+#define SITHATMOS_MAX_PARTICLES 96
 typedef struct sithAtmosParticle
 {
     float pos[3];      // world
     float radius;      // world units
     float age;         // 0 = just born, 1 = dying
     float seed;        // 0-1, varies per particle and per cycle
-    float kind;        // 0 steam, 1 smoke
+    float kind;        // 0 steam, 1 smoke, 2 dust mote
     float tint[3];
     float opacity;
 } sithAtmosParticle;
 
 // Particles of emitters within reach of the camera (up to max). Returns how many.
 int sithAtmos_GetParticles(float timeSec, const rdVector3* pCamPos, sithAtmosParticle* pOut, int max);
+
+// Dust motes: tiny specks fixed in the world around the camera (so they parallax as it moves),
+// drifting slowly, one per cell of a grid, in front of the camera (pFwd: its world forward).
+// The shader shows them only where the baked light in the air is bright. Returns how many.
+int sithAtmos_GetDust(float timeSec, const rdVector3* pCamPos, const float* pFwd, float amount, sithAtmosParticle* pOut, int max);
 
 #endif // _SITHATMOS_H

@@ -188,6 +188,7 @@ extern flex_t jkPlayer_fogNoise;
 extern flex_t jkPlayer_heightFog;
 extern int jkPlayer_fogVolumes;
 extern int jkPlayer_bSmoke;
+extern flex_t jkPlayer_dust;
 extern int jkPlayer_bCinematicLight;
 extern flex_t jkPlayer_cineKey;
 extern flex_t jkPlayer_cineFill;

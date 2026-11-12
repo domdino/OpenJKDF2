@@ -3,7 +3,8 @@
 // with decay: bright glowing areas between the pixel and the light smear into rays.
 // Additive over the scene.
 //   tex    - glow (emissive) buffer from the world pass
-//   tex2   - depth target (unused for now, kept for occlusion later)
+//   tex2   - depth target: the sun's rays only come from open sky, and a glow light hidden
+//            behind a wall (checked around its screen position) casts no rays
 //   tex3   - scene colour: its bright parts (light strips, sky) also feed the rays
 //   param1 - strength
 uniform sampler2D tex;
@@ -14,7 +15,7 @@ uniform float param1;
 uniform float param2;
 uniform float param3;
 uniform int u_numShafts;
-uniform vec4 u_shaftPos[4];   // light uv xy, intensity, w = 1 for the sky's sun/moon
+uniform vec4 u_shaftPos[4];   // light uv xy, intensity, w = view depth of a glow light (< 0: the sky's sun/moon)
 uniform vec4 u_shaftCol[4];   // rgb
 in vec4 f_color;
 in vec2 f_uv;
@@ -31,17 +32,35 @@ void main(void)
         vec2 toLight = u_shaftPos[i].xy - f_uv;
         float dist = length(toLight);
         // Rays fade with distance; skip lights too far away to contribute.
-        float falloff = exp(-dist * (u_shaftPos[i].w > 0.5 ? 1.2 : 2.5));
+        bool skySource = u_shaftPos[i].w < 0.0;
+        float falloff = exp(-dist * (skySource ? 1.2 : 2.5));
         if (falloff * u_shaftPos[i].z < 0.02) continue;
+        // Added (remaster): occlusion. A glow light sits on its own surface, so where it's in
+        // view the depth around its screen position matches its depth; a wall or a character in
+        // front is nearer. Off screen there's nothing to test, so it counts as visible.
+        float vis = 1.0;
+        vec2 luv = u_shaftPos[i].xy;
+        if (!skySource && luv.x > 0.0 && luv.x < 1.0 && luv.y > 0.0 && luv.y < 1.0)
+        {
+            float lightDepth = u_shaftPos[i].w;
+            float seen = 0.0;
+            for (int ox = -1; ox <= 1; ox++)
+                for (int oy = -1; oy <= 1; oy++) {
+                    vec4 dd = texture(tex2, luv + vec2(ox, oy) * 0.006);
+                    float sd = (dd.a > 0.5 && dd.z > 0.0 && dd.z < 500.0) ? dd.z : 1e6;
+                    seen += sd >= lightDepth * 0.93 - 0.03 ? 1.0 : 0.0;
+                }
+            vis = seen / 9.0;
+            if (vis <= 0.0) continue;
+        }
         vec2 stepUV = toLight * (0.9 / float(SAMPLES));
         // Per-pixel jitter of the start point turns the 32-step banding into fine noise.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
         vec2 uv = f_uv + stepUV * jitter;
         float decay = 1.0;
         float accum = 0.0;
-        // w = 1: the sun/moon of the volumetric sky. Only open sky feeds its rays (walls and
-        // cloud cores block them), so they stream through gaps in the clouds and the level.
-        bool skySource = u_shaftPos[i].w > 0.5;
+        // The sun/moon of the volumetric sky: only open sky feeds its rays (walls and cloud
+        // cores block them), so they stream through gaps in the clouds and the level.
         for (int s = 0; s < SAMPLES; s++)
         {
             uv += stepUV;
@@ -59,7 +78,7 @@ void main(void)
             decay *= 0.91; // stronger per step, to cover the same distance in 16 steps
         }
         accum /= float(SAMPLES);
-        total += u_shaftCol[i].rgb * accum * falloff * u_shaftPos[i].z;
+        total += u_shaftCol[i].rgb * accum * falloff * u_shaftPos[i].z * vis;
     }
     fragColor = vec4(total * param1 * 1.5, 0.0);
 }

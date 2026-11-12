@@ -82,6 +82,7 @@ flex_t jkPlayer_fogDensity = 0.1;                          // per world unit
 flex_t jkPlayer_fogGain = 1.0;
 flex_t jkPlayer_fogMaxDist = 30.0;
 flex_t jkPlayer_fogNoise = 0.6;
+flex_t jkPlayer_dust = 1.0;                                 // Added (remaster): dust motes in lit air (0 = off)
 int jkPlayer_bSmoke = 1;                                    // Added (remaster): smoke and steam emitters (jkgm/atmos)
 int jkPlayer_fogVolumes = 1;                                // Added (remaster): hand-placed fog volumes (jkgm/atmos)
 flex_t jkPlayer_heightFog = 1.0;                            // Added (remaster): scales each level's height fog preset
@@ -272,6 +273,7 @@ void jkPlayer_StartupVars()
     sithCvar_RegisterFlex("r_fogGain",                  1.0,                        &jkPlayer_fogGain,                  CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_fogMaxDist",               30.0,                       &jkPlayer_fogMaxDist,               CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_fogNoise",                 0.6,                        &jkPlayer_fogNoise,                 CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_dust",                     1.0,                        &jkPlayer_dust,                     CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_smoke",                    1,                          &jkPlayer_bSmoke,                   CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_fogVolumes",               1,                          &jkPlayer_fogVolumes,               CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_heightFog",                1.0,                        &jkPlayer_heightFog,                CVARFLAG_LOCAL);

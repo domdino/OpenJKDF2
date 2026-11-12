@@ -16,10 +16,10 @@ uniform vec3 u_fineSize;
 uniform vec3 u_coarseOrigin;
 uniform vec3 u_coarseSize;
 uniform int u_numP;
-uniform vec4 u_pScreen[64];   // u, v, radius (in screen heights), view depth
-uniform vec4 u_pWorld[64];    // world xyz, age 0-1
-uniform vec4 u_pLook[64];     // tint rgb, opacity
-uniform vec4 u_pMisc[64];     // seed, kind (0 steam, 1 smoke)
+uniform vec4 u_pScreen[96];   // u, v, radius (in screen heights), view depth
+uniform vec4 u_pWorld[96];    // world xyz, age 0-1
+uniform vec4 u_pLook[96];     // tint rgb, opacity
+uniform vec4 u_pMisc[96];     // seed, kind (0 steam, 1 smoke, 2 dust)
 uniform float u_aspect;       // width / height
 uniform float u_time;
 uniform vec2 iResolution;
@@ -79,7 +79,7 @@ void main(void)
     float sceneDepth = (d.a > 0.5 && d.z > 0.0 && d.z < 500.0) ? d.z : 1e6;
     vec3 C = vec3(0.0);
     float A = 0.0;
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 96; i++) {
         if (i >= u_numP) break;
         vec4 ps = u_pScreen[i];
         vec2 q = (f_uv - ps.xy) * vec2(u_aspect, 1.0) / ps.z;
@@ -90,6 +90,18 @@ void main(void)
         vec4 pw = u_pWorld[i];
         vec4 look = u_pLook[i];
         vec4 misc = u_pMisc[i];
+        if (misc.y > 1.5) {
+            // Dust mote: a tiny soft speck, only where the air is lit, twinkling slowly.
+            vec3 Ld = airLight(pw.xyz);
+            float lum = dot(Ld, vec3(0.2126, 0.7152, 0.0722));
+            float lit = smoothstep(0.08, 0.4, lum);
+            if (lit <= 0.0) continue;
+            float tw = 0.55 + 0.45 * sin(u_time * (1.3 + misc.x * 2.0) + misc.x * 40.0);
+            float da = clamp((1.0 - smoothstep(0.0, 1.0, r)) * lit * tw * look.a * soft * 1.6, 0.0, 1.0);
+            C = C * (1.0 - da) + (Ld * 2.5 + 0.05) * da;
+            A = A * (1.0 - da) + da;
+            continue;
+        }
         float age = pw.w;
         bool smoke = misc.y > 0.5;
         // Puff: noise that turns and billows with age, inside a soft round edge.

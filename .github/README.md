@@ -140,9 +140,7 @@ Six levels, 1997 vs remaster:
 
 ![Hand-placed floor mist in the hangar](../docs/screenshots/stage2-fog-volumes-hangar.jpg)
 
-**Smoke, steam and dust:** emitters placed in the same Blender add-on, drawn as soft puffs that billow and rise, fade into floors and walls, and take the baked light around them; dust motes drift and twinkle wherever the air is lit ([video](../docs/screenshots/stage2-atmosphere-hangar.mp4)):
-
-![Smoke and steam in the hangar](../docs/screenshots/stage2-smoke-hangar.jpg)
+**Smoke, steam and dust:** smoke and steam emitters can be placed with the same Blender add-on (they billow, rise, fade into floors and walls and take the baked light); they'll go where something motivates them, like vents, grates and wreckage. Dust motes drift and twinkle wherever the air is lit ([hangar clip](../docs/screenshots/stage2-atmosphere-hangar.mp4): fog, floor mist and dust in motion).
 
 **Skies:** a volumetric cloud sky on the storm levels and presets for the rest (Nar Shaddaa smog, Sulon overcast, day and sunset skies):
 

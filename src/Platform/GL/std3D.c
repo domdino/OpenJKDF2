@@ -28,6 +28,7 @@
 
 #include "SDL2_helper.h"
 #include "Engine/sithSky.h" // Added (remaster)
+#include "Engine/sithAtmos.h" // Added (remaster): volumetric fog
 #include "General/stdString.h"
 
 #ifdef WIN32
@@ -147,6 +148,13 @@ static int std3D_ssrHaveCamera = 0;
 // Added (remaster): atmosphere passes, and the glow lights of the current frame (camera
 // space), which the shaft pass aims at.
 std3DSimpleTexStage std3D_hazeStage;
+// Added (remaster): volumetric fog (sithAtmos), lit by the baked light volume.
+std3DSimpleTexStage std3D_fogStage;
+static GLuint std3D_fogTex[2] = {0, 0};
+static GLint std3D_fogU[16];
+static float std3D_fogCamPos[3];
+enum { FOGU_FINE, FOGU_COARSE, FOGU_FORIGIN, FOGU_FSIZE, FOGU_CORIGIN, FOGU_CSIZE, FOGU_PROJ, FOGU_SCREEN,
+       FOGU_WX, FOGU_WY, FOGU_WZ, FOGU_CAM, FOGU_FOG, FOGU_FOG2 };
 std3DSimpleTexStage std3D_shaftStage;
 static GLint std3D_shaftUniformNum = -1, std3D_shaftUniformPos = -1, std3D_shaftUniformCol = -1;
 // Added (remaster): volumetric sky (sithSky.c, sky_f.glsl). The cloud panorama is refreshed a
@@ -656,6 +664,14 @@ int init_resources()
     std3D_ssrUniformTexMat = std3D_tryFindUniform(std3D_ssrStage.program, "texMat");
     // Added (remaster): atmosphere
     if (!std3D_loadSimpleTexProgram("shaders/haze", &std3D_hazeStage)) return false;
+    // Added (remaster): volumetric fog. Not fatal if it fails: haze is the fallback.
+    if (std3D_loadSimpleTexProgram("shaders/fog", &std3D_fogStage))
+    {
+        static const char* names[] = {"u_fine", "u_coarse", "u_fineOrigin", "u_fineSize", "u_coarseOrigin", "u_coarseSize",
+                                      "u_proj", "u_screen", "u_WX", "u_WY", "u_WZ", "u_camPos", "u_fog", "u_fog2"};
+        for (int k = 0; k < 14; k++) std3D_fogU[k] = std3D_tryFindUniform(std3D_fogStage.program, names[k]);
+    }
+    else std3D_fogStage.program = 0;
     if (!std3D_loadSimpleTexProgram("shaders/shafts", &std3D_shaftStage)) return false;
     std3D_shaftUniformNum = std3D_tryFindUniform(std3D_shaftStage.program, "u_numShafts");
     std3D_shaftUniformPos = std3D_tryFindUniform(std3D_shaftStage.program, "u_shaftPos");
@@ -3254,9 +3270,73 @@ void std3D_DrawSceneFbo()
                             bSceneBlur ? std3D_pFb->hazeBlur1.tex : std3D_pFb->tex0, 0.0, 0.0, 0.0, 0);
     }
 
+    // Added (remaster): volumetric fog, where the level has a baked light volume (sithAtmos).
+    // It replaces the haze below.
+    int bFogDone = 0;
+    if (jkPlayer_bVolumetricFog && jkPlayer_bHaze && std3D_AtmosphereActive() && (std3D_pFb->enable_extra & 8)
+        && std3D_fogStage.program && std3D_ssrHaveCamera)
+    {
+        sithAtmosGrid *gF = NULL, *gC = NULL;
+        rdVector3 cam = {std3D_fogCamPos[0], std3D_fogCamPos[1], std3D_fogCamPos[2]};
+        if (sithAtmos_Update(&cam, &gF, &gC))
+        {
+            sithAtmosGrid* g[2] = {gF, gC};
+            for (int k = 0; k < 2; k++)
+            {
+                if (!std3D_fogTex[k])
+                {
+                    glGenTextures(1, &std3D_fogTex[k]);
+                    glBindTexture(GL_TEXTURE_3D, std3D_fogTex[k]);
+                    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+                    g[k]->dirty = 1;
+                }
+                if (g[k]->dirty && g[k]->data)
+                {
+                    glBindTexture(GL_TEXTURE_3D, std3D_fogTex[k]);
+                    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, g[k]->dims[0], g[k]->dims[1], g[k]->dims[2], 0, GL_RGBA, GL_FLOAT, g[k]->data);
+                    g[k]->dirty = 0;
+                }
+            }
+            glBindTexture(GL_TEXTURE_3D, 0);
+            glUseProgram(std3D_fogStage.program);
+            for (int k = 0; k < 2; k++)
+            {
+                glActiveTexture(GL_TEXTURE0 + 6 + k);
+                glBindTexture(GL_TEXTURE_3D, std3D_fogTex[k]);
+                glUniform1i(std3D_fogU[FOGU_FINE + k], 6 + k);
+                float sp = g[k]->spacing;
+                glUniform3f(std3D_fogU[FOGU_FORIGIN + 2 * k], (g[k]->origin[0] - 0.5f) * sp, (g[k]->origin[1] - 0.5f) * sp, (g[k]->origin[2] - 0.5f) * sp);
+                glUniform3f(std3D_fogU[FOGU_FSIZE + 2 * k], g[k]->dims[0] * sp, g[k]->dims[1] * sp, g[k]->dims[2] * sp);
+            }
+            glActiveTexture(GL_TEXTURE0);
+            glUniform4fv(std3D_fogU[FOGU_PROJ], 1, std3D_ssrProj);
+            glUniform4fv(std3D_fogU[FOGU_SCREEN], 1, std3D_ssrScreen);
+            glUniform3fv(std3D_fogU[FOGU_WX], 1, &std3D_skyWorldAxes[0]);
+            glUniform3fv(std3D_fogU[FOGU_WY], 1, &std3D_skyWorldAxes[3]);
+            glUniform3fv(std3D_fogU[FOGU_WZ], 1, &std3D_skyWorldAxes[6]);
+            glUniform3fv(std3D_fogU[FOGU_CAM], 1, std3D_fogCamPos);
+            glUniform4f(std3D_fogU[FOGU_FOG], jkPlayer_fogDensity, jkPlayer_fogGain, jkPlayer_fogMaxDist, (float)(SDL_GetTicks() % 1000000) / 1000.0f);
+            glUniform4f(std3D_fogU[FOGU_FOG2], jkPlayer_fogNoise, 0.6f, 3.0f, 32.0f);
+            glBlendFunc(GL_ONE, GL_SRC_ALPHA);
+            std3D_DrawSimpleTex(&std3D_fogStage, pOut, std3D_pFb->tex4, 0, 0, 0.0, 0.0, 0.0, 0);
+            for (int k = 0; k < 2; k++)
+            {
+                glActiveTexture(GL_TEXTURE0 + 6 + k);
+                glBindTexture(GL_TEXTURE_3D, 0);
+            }
+            glActiveTexture(GL_TEXTURE0);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            bFogDone = 1;
+        }
+    }
+
     // Added (remaster): haze. Distance fog from the depth target, coloured by a heavily
     // blurred copy of the scene so it glows near lights. Alpha-blended over the scene.
-    if (jkPlayer_bHaze && std3D_AtmosphereActive() && (std3D_pFb->enable_extra & 8) && std3D_hazeStage.program)
+    if (!bFogDone && jkPlayer_bHaze && std3D_AtmosphereActive() && (std3D_pFb->enable_extra & 8) && std3D_hazeStage.program)
     {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         std3D_DrawSimpleTex(&std3D_hazeStage, pOut, std3D_pFb->hazeBlur2.tex, std3D_pFb->tex4, 0,
@@ -3679,6 +3759,9 @@ void std3D_DrawRenderList()
                     float fill = (jkPlayer_lightmapFill >= 0.0) ? (float)jkPlayer_lightmapFill : std3D_lmFill;
                     glUniform4f(uniform_lmParams, fill, std3D_lmGain * (float)jkPlayer_lightmapGain, (float)jkPlayer_lightmapMax, 0.0f);
                     glUniform3f(uniform_lmCamPos, rdCamera_g_camMatrix.scale.x, rdCamera_g_camMatrix.scale.y, rdCamera_g_camMatrix.scale.z);
+                    std3D_fogCamPos[0] = rdCamera_g_camMatrix.scale.x; // Added (remaster): volumetric fog
+                    std3D_fogCamPos[1] = rdCamera_g_camMatrix.scale.y;
+                    std3D_fogCamPos[2] = rdCamera_g_camMatrix.scale.z;
                     glUniform1i(uniform_lmAtlas, 8);
                     glUniform1i(uniform_lmData, 9);
                     glActiveTexture(GL_TEXTURE0 + 8);

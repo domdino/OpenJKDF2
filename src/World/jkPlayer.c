@@ -74,6 +74,11 @@ int jkPlayer_bGlowLights = 0;                               // Added (remaster):
 int jkPlayer_bReflections = 0;                              // Added (remaster)
 flex_t jkPlayer_reflectionStrength = 1.0;                   // Added (remaster)
 int jkPlayer_bHaze = 0;                                     // Added (remaster)
+int jkPlayer_bVolumetricFog = 0;                            // Added (remaster): fog lit by the baked light volume (sithAtmos)
+flex_t jkPlayer_fogDensity = 0.08;                          // per world unit
+flex_t jkPlayer_fogGain = 1.0;
+flex_t jkPlayer_fogMaxDist = 30.0;
+flex_t jkPlayer_fogNoise = 0.6;
 flex_t jkPlayer_hazeDensity = 0.08;                         // Added (remaster): per world unit
 flex_t jkPlayer_hazeStrength = 1.0;                         // Added (remaster)
 int jkPlayer_bLightShafts = 0;                              // Added (remaster)
@@ -249,6 +254,13 @@ void jkPlayer_StartupVars()
     // Atmosphere: distance haze lit by the scene, and light shafts from glowing surfaces.
     // Both need r_perPixelLighting (they use its depth buffer).
     sithCvar_RegisterBool("r_haze",                     0,                          &jkPlayer_bHaze,                    CVARFLAG_LOCAL);
+    // Volumetric fog (atmosphere): replaces the haze where a level has a baked light volume
+    // (tools/blender/volume_bake.py). Needs r_haze too.
+    sithCvar_RegisterBool("r_volumetricFog",            0,                          &jkPlayer_bVolumetricFog,           CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_fogDensity",               0.08,                       &jkPlayer_fogDensity,               CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_fogGain",                  1.0,                        &jkPlayer_fogGain,                  CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_fogMaxDist",               30.0,                       &jkPlayer_fogMaxDist,               CVARFLAG_LOCAL);
+    sithCvar_RegisterFlex("r_fogNoise",                 0.6,                        &jkPlayer_fogNoise,                 CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_hazeDensity",              0.08,                       &jkPlayer_hazeDensity,              CVARFLAG_LOCAL);
     sithCvar_RegisterFlex("r_hazeStrength",             1.0,                        &jkPlayer_hazeStrength,             CVARFLAG_LOCAL);
     sithCvar_RegisterBool("r_lightShafts",              0,                          &jkPlayer_bLightShafts,             CVARFLAG_LOCAL);
@@ -339,6 +351,7 @@ static const jkPlayerPresetEntry jkPlayer_aRemasterPreset[] = {
     {"r_reflectionStrength", "1",   "1"},
     {"r_reflectionRoughness","0.5", "0.5"},
     {"r_haze",               "1",   "0"},
+    {"r_volumetricFog",      "1",   "0"},   // only levels with a baked light volume change
     {"r_hazeDensity",        "0.08","0.08"},
     {"r_hazeStrength",       "1",   "1"},
     {"r_lightShafts",        "1",   "0"},

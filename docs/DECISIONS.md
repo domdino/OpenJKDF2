@@ -614,3 +614,14 @@ Every scene should be lit like a cinematic Star Wars shot: key light from the si
 - Next (proposal): atmosphere, volumetric fog lit by a baked light volume, height fog, hand-placed fog and smoke volumes (docs/stage2-atmosphere-plan.md).
 
 **Side-by-sides against the real 1997 game** (Dom, 2026-11-12): comparisons for sharing always put the full original on the left: original models, original textures, remaster off. `CAPTURE_ORIGINAL=1 scripts/capture.sh` does it (sets the capture folder's converted models aside for that run, no HD pack, `remaster 0`, no filtering). The homepage hangar image (docs/screenshots/stage2-baked-light-hangar.jpg) is now 1997 vs remaster.
+
+## 2026-11-12 - Atmosphere: light volume and volumetric fog (steps 1-2)
+
+Dom approved docs/stage2-atmosphere-plan.md. Branch `stage2-atmosphere`.
+
+**All 25 levels baked** (light maps, `bake_all.py`): no failures; every level loads its light map in game (103-173 fps at 1280x960 with the remaster preset). Probes for every level are baking in a second pass.
+
+**Light volume** (step 1): `tools/lightbake/volume_points.py` fills each sector with points, a fine grid (0.25 units) inside normal sectors and a coarse one (1 unit, doubled until it fits) everywhere, so huge open sectors (Escape '88 has 24 sectors hundreds of units across) still get light. The inside test uses every face plane of the sector, portals included, read from the JKL: the light bake export leaves portals out (1,195 of the hangar's 4,335 faces), which would have let points leak through doorways into rock. `tools/blender/volume_bake.py` bakes each point as a tiny octahedron to vertex colours (its six corners face the six axes, so one bake gives light from every direction), in the light map's scene with the calibration probe_bake saved. Hangar: 64k fine points in 18 s. Slices: docs/screenshots/stage2-light-volume-hangar-slices.png.
+
+**Volumetric fog** (step 2, `r_volumetricFog`, in the remaster preset; `r_fogDensity` 0.08, `r_fogGain`, `r_fogMaxDist` 30, `r_fogNoise` 0.6): `src/Engine/sithAtmos.c` loads the volume and copies the part around the camera into two dense grids (fine 96x96x48 cells, coarse 64x64x32), refilled when the camera moves a quarter of the way out. The fog shader marches each pixel's view ray (32 steps, jittered) through them: density = base x drifting two-octave noise, light = the baked light in the air there (cells inside walls have no data and are ignored by dividing by the filtered coverage). Replaces the screen-space haze where a level has a volume; haze stays as the fallback.
+- Hangar: the far end fills with warm, red-tinged air instead of flat haze; the shuttle sits back in it. 0.08 is subtle; 0.2 fills the hangar with lit smoke; 0.4 is heavy. Cost about 7 fps at 0.08 (114 -> 107). docs/screenshots/stage2-volumetric-fog-densities.jpg.

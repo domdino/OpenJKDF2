@@ -68,7 +68,7 @@ That breaks down into concrete engine work:
 - [x] Height fog on outdoor levels, distance fog
 - [x] Fog volumes placed by hand in Blender (`tools/blender/atmos_volumes.py`)
 - [x] Smoke and steam emitters, placed in Blender, lit by the bake
-- [ ] Atmosphere, continued: dust in the light, shaft occlusion ([plan](../docs/stage2-atmosphere-plan.md))
+- [x] Dust in the light; light shafts that stop at walls ([plan](../docs/stage2-atmosphere-plan.md))
 - [x] One-switch preset: `remaster 1` in the console
 
 ### Stage 3 checklist
@@ -140,7 +140,7 @@ Six levels, 1997 vs remaster:
 
 ![Hand-placed floor mist in the hangar](../docs/screenshots/stage2-fog-volumes-hangar.jpg)
 
-**Smoke and steam:** emitters placed in the same Blender add-on, drawn as soft puffs that billow and rise, fade into floors and walls, and take the baked light around them:
+**Smoke, steam and dust:** emitters placed in the same Blender add-on, drawn as soft puffs that billow and rise, fade into floors and walls, and take the baked light around them; dust motes drift and twinkle wherever the air is lit:
 
 ![Smoke and steam in the hangar](../docs/screenshots/stage2-smoke-hangar.jpg)
 
@@ -166,7 +166,7 @@ Six levels, 1997 vs remaster:
 
 ![Cutscenes, original vs upscale](../docs/screenshots/stage5-cutscenes-hd.jpg)
 
-Next up: [atmosphere](../docs/stage2-atmosphere-plan.md), continued: dust in the light, light shafts that stop at walls.
+Next up: materials (roughness and normal maps, so wet metal shines and cloth doesn't).
 
 Decisions, findings and dead ends are logged as I go in [docs/DECISIONS.md](../docs/DECISIONS.md).
 

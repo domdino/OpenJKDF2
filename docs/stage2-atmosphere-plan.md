@@ -1,6 +1,6 @@
 # Atmosphere plan: smoke, fog and volumetric light (Stage 2, lighting phase 5)
 
-Status: proposal, waiting for Dom's go-ahead.
+Status: approved by Dom (2026-11-12); steps 1-6 built on `stage2-atmosphere` (see docs/DECISIONS.md).
 
 ## Why
 

@@ -43,6 +43,10 @@ CAST = {
     "tk":    ("trandoshan", "sp", "Trandoshan (variant 2)"),
     "tkstr": ("trandoshan", "sp", "Trandoshan (variant 2, rifle)"),
     "ugalt": ("ugnaught", "default", "Ugnaught"),
+    # The passed-out drunk on the Nar Shaddaa bar table ("tuskensoused", model thout: a Trandoshan
+    # lying down). A 4th field fits onto another JK model than the entry's own name.
+    "thout":  ("trandoshan", "default", "Passed-out Trandoshan"),
+    "thoutw": ("weequay", "default", "Passed-out Weequay", "thout"),
 }
 
 
@@ -87,9 +91,10 @@ def run(cmd, tag):
 
 
 def convert(name):
-    ja, skin, title = CAST[name]
+    ja, skin, title = CAST[name][:3]
+    target = CAST[name][3] if len(CAST[name]) > 3 else name
     out = os.path.join(ROOT, "hd", "models_ja", name)
-    tpl = os.path.join(SRC, "3do", name + ".3do")
+    tpl = os.path.join(SRC, "3do", target + ".3do")
     glm = os.path.join(JA, "models", "players", ja, "model.glm")
     print("==", name, "->", ja, skin)
     if not run([BLENDER, "-b", "--factory-startup", "-noaudio", "--python",
@@ -99,7 +104,7 @@ def convert(name):
     if not run([sys.executable, "-I", os.path.join(ROOT, "tools", "make_character_textures.py"), out, name], "textures"):
         return False
     cmp_prefix = os.path.join(ROOT, "hd", "compare", name)
-    pal, lvl = level_cmp(name)
+    pal, lvl = level_cmp(target)
     print("    palette", os.path.basename(pal), "from", lvl)
     if not run([BLENDER, "-b", "--factory-startup", "-noaudio", "--python",
                 os.path.join(ROOT, "tools", "blender", "compare_render.py"), "--",

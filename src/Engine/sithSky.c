@@ -139,6 +139,36 @@ static const sithSkyPreset* sithSky_FindForWorld(SithWorld* pWorld)
     return best >= 0 ? &sithSky_aPresets[best] : NULL;
 }
 
+// Material -> is a sky texture of the active preset, cached by pointer (reset per level).
+#define SITHSKY_MATCACHE 512
+static rdMaterial* sithSky_aMatKey[SITHSKY_MATCACHE];
+static int8_t sithSky_aMatVal[SITHSKY_MATCACHE];
+
+int sithSky_IsSkyMaterial(rdMaterial* pMat)
+{
+    const sithSkyPreset* p = sithSky_GetActive();
+    if (!p || !pMat) return 0;
+    uint32_t h = (uint32_t)(((uintptr_t)pMat >> 4) * 2654435761u) % SITHSKY_MATCACHE;
+    for (int probe = 0; probe < 8; probe++)
+    {
+        uint32_t i = (h + probe) % SITHSKY_MATCACHE;
+        if (sithSky_aMatKey[i] == pMat) return sithSky_aMatVal[i];
+        if (!sithSky_aMatKey[i])
+        {
+            int v = 0;
+            for (int k = 0; k < 4 && p->aMats[k]; k++)
+                if (sithSky_MatMatches(pMat->mat_fpath, p->aMats[k])) v = 1;
+            sithSky_aMatKey[i] = pMat;
+            sithSky_aMatVal[i] = (int8_t)v;
+            return v;
+        }
+    }
+    int v = 0;
+    for (int k = 0; k < 4 && p->aMats[k]; k++)
+        if (sithSky_MatMatches(pMat->mat_fpath, p->aMats[k])) v = 1;
+    return v;
+}
+
 const sithSkyPreset* sithSky_GetActive(void)
 {
     if (!jkPlayer_bVolumetricSky || !jkPlayer_bPerPixelLighting) return NULL;
@@ -150,6 +180,7 @@ const sithSkyPreset* sithSky_GetActive(void)
         sithSky_worldSurfaces = w ? w->numSurfaces : -1;
         if (w) strncpy(sithSky_worldName, w->map_jkl_fname, sizeof(sithSky_worldName));
         sithSky_pActive = sithSky_FindForWorld(w);
+        memset(sithSky_aMatKey, 0, sizeof(sithSky_aMatKey));
     }
     return sithSky_pActive;
 }

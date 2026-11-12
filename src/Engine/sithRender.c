@@ -2279,7 +2279,7 @@ void sithRender_RenderSectors()
                 v59 = procEntry->geometryMode;
                 procEntry->light_flags = 0;
                 // Added (remaster): volumetric sky replaces this level's sky texture (sithSky).
-                if (UNLIKELY(flags & (SITH_SURFACE_HORIZON_SKY | SITH_SURFACE_CEILING_SKY)) && sithSky_GetActive())
+                if (UNLIKELY(sithSky_GetActive()) && ((flags & (SITH_SURFACE_HORIZON_SKY | SITH_SURFACE_CEILING_SKY)) || sithSky_IsSkyMaterial(v58)))
                     procEntry->light_flags |= RD_PROC_FLAG_SKY;
                 procEntry->type = v57;
                 rend_flags = 1;
@@ -2515,6 +2515,8 @@ void sithRender_RenderSectors()
                     v20->material = v65->surfaceInfo.face.material;
                     v38 = v20->geometryMode;
                     v20->light_flags = 0;
+                    if (UNLIKELY(sithSky_GetActive()) && sithSky_IsSkyMaterial(v20->material)) // Added (remaster): sky texture on an ordinary face
+                        v20->light_flags |= RD_PROC_FLAG_SKY;
                     v20->type = v65->surfaceInfo.face.type;
                     v39 = 1;
                     if ( v38 >= 4 )

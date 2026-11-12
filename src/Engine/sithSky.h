@@ -35,6 +35,10 @@ typedef struct sithSkyPreset
 // keeps its original sky or the feature is off.
 const sithSkyPreset* sithSky_GetActive(void);
 
+// True if this material is one of the active preset's sky textures. Some levels paint sky
+// textures on ordinary faces too (fake windows, the sky above a wall); those get the sky.
+int sithSky_IsSkyMaterial(rdMaterial* pMat);
+
 // Effective sun direction (world, unit) and coverage, after the r_sky* overrides.
 void sithSky_GetSunDir(const sithSkyPreset* p, float* pOut3);
 float sithSky_GetCoverage(const sithSkyPreset* p);

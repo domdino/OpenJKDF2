@@ -27,7 +27,8 @@
 #include "Engine/rdColormap.h"
 #include "Primitives/rdPrimit3.h"
 #include "Primitives/rdDebug.h"
-void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv); // Added (remaster)
+void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* pOrient); // Added (remaster)
+#include "Engine/sithGlowLights.h"
 
 model3Loader_t rdModel3_RegisterLoader(model3Loader_t pfFunc)
 {
@@ -1866,7 +1867,7 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
             pCurMesh->vertices_unk,
             pCurMesh->numVertices,
             rdCamera_g_pCurCamera->attenuationMin);
-        rdModel3_CinematicLight(pCurMesh, &matInv); // Added (remaster)
+        rdModel3_CinematicLight(pCurMesh, &matInv, orient); // Added (remaster)
     }
     else if (rdModel3_lightingMode == RD_LIGHTMODE_6_UNK) // MOTS added
     {
@@ -1922,7 +1923,7 @@ void rdModel3_DrawMesh(rdMesh *pMesh, rdMatrix34 *orient)
 // the subject), and a rim lights edges turning away from the camera. Model faces then skip
 // the ambient floor (rdModel3_DrawFace), so the shadow side can actually go dark.
 int rdModel3_bCinematicMesh = 0;
-void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv)
+void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv, rdMatrix34* pOrient)
 {
     rdModel3_bCinematicMesh = 0;
     if (!jkPlayer_bCinematicLight || !jkPlayer_bPerPixelLighting || !pMesh->vertexNormals || !rdCamera_g_pCurCamera)
@@ -1932,6 +1933,20 @@ void rdModel3_CinematicLight(rdMesh* pMesh, rdMatrix34* pMatInv)
     keyW.x = 0.62f * cam->rvec.x - 0.38f * cam->lvec.x + 0.69f * cam->uvec.x;
     keyW.y = 0.62f * cam->rvec.y - 0.38f * cam->lvec.y + 0.69f * cam->uvec.y;
     keyW.z = 0.62f * cam->rvec.z - 0.38f * cam->lvec.z + 0.69f * cam->uvec.z;
+    // Aim the key at the strongest nearby glowing source when one dominates (a lamp, a strip),
+    // keeping some of the screen-side key so the subject always has a lit and a shadow side.
+    if (pOrient)
+    {
+        rdVector3 toLight;
+        float w = sithGlowLights_Strongest(&pOrient->scale, &toLight) * 0.8f;
+        if (w > 0.0f)
+        {
+            rdVector_Normalize3Acc(&keyW);
+            keyW.x = keyW.x * (1.0f - w) + toLight.x * w;
+            keyW.y = keyW.y * (1.0f - w) + toLight.y * w;
+            keyW.z = keyW.z * (1.0f - w) + toLight.z * w;
+        }
+    }
     rdMatrix_TransformVector34(&keyL, &keyW, pMatInv);
     rdVector_Normalize3Acc(&keyL);
     rdMatrix_TransformPoint34(&camL, &cam->scale, pMatInv);

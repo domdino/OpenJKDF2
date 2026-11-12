@@ -16,6 +16,11 @@ int sithGlowLights_Count(void);
 // camera space: aPos = xyz + radius, aCol = rgb + intensity. Returns how many were written.
 int sithGlowLights_Gather(rdCamera* pCamera, float* aPos, float* aCol, int maxLights);
 
+// The strongest glow light near a world position among the visible sectors (by intensity over
+// squared distance). Writes the unit direction from pos to it; returns 0..1 how dominant it is
+// (0 = nothing near). Used to aim the cinematic key light on characters at a real source.
+float sithGlowLights_Strongest(const rdVector3* pPos, rdVector3* pOutDir);
+
 // Representative colour of a material (its glowing texels if it has enough, else all
 // texels), normalised so the brightest channel is 1. Returns 0 if it can't be read.
 int sithGlowLights_MaterialColor(rdMaterial* pMat, float* pOutRGB);

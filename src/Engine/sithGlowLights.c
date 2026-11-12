@@ -255,6 +255,38 @@ int sithGlowLights_MaterialColor(rdMaterial* pMat, float* pOutRGB)
     return 1;
 }
 
+float sithGlowLights_Strongest(const rdVector3* pPos, rdVector3* pOutDir)
+{
+    SithWorld* pWorld = sithWorld_g_pCurrentWorld;
+    if (!pWorld || !pPos) return 0.0f;
+    if (pWorld != sithGlowLights_pWorld) sithGlowLights_Build(pWorld);
+    if (!sithGlowLights_numLights || !sithGlowLights_aSectorStart) return 0.0f;
+    float best = 0.0f, total = 0.0f;
+    const sithGlowLight* pBest = NULL;
+    for (int k = 0; k < sithRender_g_numVisibleSectors; k++)
+    {
+        SithSector* pSector = sithRender_aVisibleSectors[k];
+        if (!pSector) continue;
+        int sIdx = (int)(pSector - pWorld->aSectors);
+        if (sIdx < 0 || sIdx >= pWorld->numSectors) continue;
+        for (int i = sithGlowLights_aSectorStart[sIdx]; i < sithGlowLights_aSectorStart[sIdx + 1]; i++)
+        {
+            const sithGlowLight* pL = &sithGlowLights_aLights[i];
+            float d2 = rdVector_DistSquared3(&pL->pos, pPos);
+            float score = pL->intensity / (d2 + 0.02f);
+            total += score;
+            if (score > best) { best = score; pBest = pL; }
+        }
+    }
+    if (!pBest || total <= 0.0f) return 0.0f;
+    rdVector_Sub3(pOutDir, &pBest->pos, pPos);
+    rdVector_Normalize3Acc(pOutDir);
+    // Dominance: how much of the nearby glow comes from this one light, faded out with distance.
+    float dom = best / total;
+    float near = best / (best + 4.0f);
+    return dom * near;
+}
+
 int sithGlowLights_Count(void)
 {
     return sithGlowLights_numLights;

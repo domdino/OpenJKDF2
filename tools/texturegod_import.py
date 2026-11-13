@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a Texture God output folder into an HD material pack the game loads.
 
-  tools/texturegod_import.py "/path/to/TEXTURE GOD/out/<run>" [--pack texturegod] [--all] [--source DIR]
+  tools/texturegod_import.py "/path/to/TEXTURE GOD/out/<run>" [--pack texturegod] [--all] [--source DIR] [--mats DIR]
 
 Reads <run>/manifest.json (keyed by the extracted file name, "<mat>.cel<N>.png") and writes
 hd/jkgm/materials/<pack>/ with metadata.json and, per texture, the albedo, ORM
@@ -33,6 +33,12 @@ def main():
     ap.add_argument("--all", action="store_true", help="import textures that failed QC too")
     ap.add_argument("--source", help="folder of the extracted originals the run was made from; palettes are "
                     "then matched against these instead of the HD albedo (needed for looks that shift colour)")
+    ap.add_argument("--name-match", action="store_true",
+                    help="match by texture name, no hashes (only for names nothing else uses, e.g. a mod's own "
+                    "weapon textures loaded as loose files, like the character pack)")
+    ap.add_argument("--any-palette", action="store_true", help="passed to jkgm_signatures.py (weapons: every level palette)")
+    ap.add_argument("--mats", action="append", default=[],
+                    help="folder of loose .mat files the textures came from (mods), passed to jkgm_signatures.py")
     args = ap.parse_args()
 
     manifest = json.load(open(os.path.join(args.run, "manifest.json")))
@@ -55,6 +61,8 @@ def main():
         mat, cel = m.group(1).split("@")[0], int(m.group(2))
         entry = {"name": "texturegod.%s.cel%d" % (m.group(1), cel),
                  "replaces": [{"name": "mat/%s.mat" % mat, "cel": cel}]}
+        if args.name_match:
+            entry["replaces"] = [{"name": pre + mat + ".mat", "cel": cel} for pre in ("3do\\mat\\", "3do/mat/", "mat\\", "mat/")]
         for key, field in (("albedo", "albedo_map"), ("orm", "orm_map"), ("normal", "normal_map"), ("emissive", "emissive_map")):
             fn = files.get(key)
             if fn and os.path.isfile(os.path.join(args.run, fn)):
@@ -72,6 +80,8 @@ def main():
         json.dump(meta, f, indent=1)
     print("%d textures imported into %s (%d skipped)" % (len(materials), pdir, skipped))
 
+    if args.name_match:
+        return
     # Palette-correct engine hashes (drops name matching). Only this pack is processed.
     tmp = os.path.join(args.out, ".import_tmp")
     if os.path.isdir(tmp):
@@ -79,7 +89,8 @@ def main():
     os.makedirs(tmp)
     os.symlink(pdir, os.path.join(tmp, args.pack))
     try:
-        subprocess.run([sys.executable, "-I", os.path.join(HERE, "jkgm_signatures.py"), tmp], check=True)
+        extra = [a for d in args.mats for a in ("--mats", os.path.abspath(d))] + (["--any-palette"] if args.any_palette else [])
+        subprocess.run([sys.executable, "-I", os.path.join(HERE, "jkgm_signatures.py"), tmp] + extra, check=True)
     finally:
         shutil.rmtree(tmp)
 

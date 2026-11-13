@@ -71,6 +71,11 @@ def main():
     ap.add_argument("packs")
     ap.add_argument("--game", default=os.path.join(root, "gamedata", "jk1"))
     ap.add_argument("--max-score", type=float, default=0.05)
+    ap.add_argument("--any-palette", action="store_true",
+                    help="sign every entry for every level palette (weapons and other things seen in every level: "
+                    "one HD look everywhere instead of only where the palette matches)")
+    ap.add_argument("--mats", action="append", default=[],
+                    help="also a folder of loose .mat files (mods, e.g. hd/models_src/jke/mat); these win over the GOBs")
     args = ap.parse_args()
 
     mats, cmps = {}, {}
@@ -83,6 +88,13 @@ def main():
             elif name.endswith(".cmp") and base != "uicolormap.cmp":
                 cmps[base] = (path, off, ln)
     palettes = {name: mx.gob_read(*loc)[64:64 + 768] for name, loc in cmps.items()}
+    for d in args.mats:
+        for f in os.listdir(d):
+            if f.lower().endswith(".mat"):
+                mats[f.lower()] = ("file", os.path.join(d, f))
+
+    def read_mat(loc):
+        return open(loc[1], "rb").read() if loc[0] == "file" else mx.gob_read(*loc)
 
     for pack in sorted(os.listdir(args.packs)):
         mpath = os.path.join(args.packs, pack, "metadata.json")
@@ -98,7 +110,7 @@ def main():
             if mat not in mats or not os.path.isfile(hd_path):
                 dropped += 1
                 continue
-            parsed = mx.parse_mat(mx.gob_read(*mats[mat]))
+            parsed = mx.parse_mat(read_mat(mats[mat]))
             if cel >= len(parsed["cels"]):
                 dropped += 1
                 continue
@@ -121,6 +133,8 @@ def main():
                 scored.sort()
                 best = scored[0][0]
                 good = [pn for s, pn in scored if s <= args.max_score and s <= best + 0.01]
+                if args.any_palette:
+                    good = [pn for _, pn in scored]
                 if not good:
                     dropped += 1
                     continue
